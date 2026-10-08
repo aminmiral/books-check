@@ -1,0 +1,5 @@
+# MCP server (runtime)
+mcp>=2.3
+# Offline precompute + evaluation only; the server does not import these
+pandas>=2.0
+scikit-learn>=1.4
