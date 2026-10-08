@@ -85,3 +85,18 @@ suggestion.
 - **Workaround:** no paid services: browser speech recognition and voices,
   keyword routing instead of a hosted model.
 - **Suggestion:** state the credit pool size up front.
+
+## 2026-10-08 — Conformance suite reports fixture scenarios as failures
+
+- **Task:** validate the server with `npx @modelcontextprotocol/conformance server --url …`.
+- **Expected:** a pass/fail for the protocol features the server implements.
+- **Actual:** 9 passed, 21 failed. Every failure is a scenario that needs a
+  fixture tool with a fixed name (e.g. `test_image_content`) or an optional
+  capability the server does not offer (logging, completion, prompts,
+  resources). The applicable checks (initialize, ping, tools/list, tool
+  errors, DNS-rebinding protection) all pass, but the summary doesn't say so.
+- **Severity:** low (misleading, not blocking).
+- **Workaround:** ran failing scenarios one by one with `--scenario` to read
+  the reason.
+- **Suggestion:** skip scenarios for capabilities the server didn't declare
+  in `initialize`, or report them as "not applicable".

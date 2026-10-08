@@ -107,20 +107,24 @@ def evidence_for(f: dict, g: pd.DataFrame, neighbours: list[int] | None,
         times = {2: "twice", 3: "three times"}.get(f["n_bills"],
                                                    f"{f['n_bills']} times")
         ev.append({"kind": "duplicate_bill", "tier": "rule", "exposure": extra,
+                   "short": f"billed {times}",
                    "text": f"The same order was billed {times}, and "
                            f"{money(extra)} was paid more than once."})
     if ratio > 1 + BILL_TOLERANCE:
         diff = f["first_bill"] - f["po_amount"]
         ev.append({"kind": "overbilled", "tier": "rule", "exposure": diff,
+                   "short": f"billed {(ratio - 1) * 100:.0f}% over the order",
                    "text": f"The bill is {(ratio - 1) * 100:.0f}% above the "
                            f"purchase order, {money(diff)} more than agreed."})
     if f["paid"] > 0 and not f["has_receipt"]:
         ev.append({"kind": "no_receipt", "tier": "rule", "exposure": f["paid"],
+                   "short": "paid with no goods receipt",
                    "text": f"{money(f['paid'])} was paid with no record of "
                            f"the goods being received."})
     if f["approver"] and f["approver"] == f["requester"]:
         ev.append({"kind": "self_approved", "tier": "rule",
                    "exposure": f["po_amount"],
+                   "short": "approved by the person who requested it",
                    "text": f"{person(f['requester'])} approved their own "
                            f"purchase order."})
     if neighbours:
@@ -128,6 +132,8 @@ def evidence_for(f: dict, g: pd.DataFrame, neighbours: list[int] | None,
         others = [p for p in neighbours if p != f["po"]]
         ev.append({"kind": "split_purchase", "tier": "context",
                    "exposure": f["po_amount"], "related": others,
+                   "short": f"one of {len(neighbours)} orders split under "
+                            f"the approval limit",
                    "text": f"It is one of {len(neighbours)} orders "
                            f"{person(f['requester'])} placed with "
                            f"{f['vendor']} within two weeks, each just under "
@@ -145,12 +151,14 @@ def evidence_for(f: dict, g: pd.DataFrame, neighbours: list[int] | None,
                 f"happened outside office hours" if len(odd) > 1 else "")
         ev.append({"kind": "after_hours", "tier": "context",
                    "exposure": f["paid"],
+                   "short": f"{verb} at {clock(first['timestamp'])}",
                    "text": f"It was {verb} at {clock(first['timestamp'])}"
                            f"{more}."})
     if 1.0 < ratio <= 1 + BILL_TOLERANCE:
         diff = f["first_bill"] - f["po_amount"]
         ev.append({"kind": "slightly_overbilled", "tier": "weak",
                    "exposure": diff,
+                   "short": f"billed {(ratio - 1) * 100:.1f}% over the order",
                    "text": f"The bill is {(ratio - 1) * 100:.1f}% above the "
                            f"order. That is inside normal tolerance, so treat "
                            f"it as a weak signal."})
@@ -197,7 +205,7 @@ def main() -> None:
                       "medium" if "context" in tiers else "low")
         if flagged and not ev:
             ev.append({"kind": "unusual_pattern", "tier": "model",
-                       "exposure": 0.0,
+                       "exposure": 0.0, "short": "an unusual pattern",
                        "text": "No single control was broken, but the "
                                "combination of amount, timing and people "
                                "is unusual compared with similar orders."})
