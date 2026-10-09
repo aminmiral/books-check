@@ -35,6 +35,7 @@ async def test_list_anomalies_ranks_rule_findings_first():
     assert (sc["orders_checked"], sc["flagged_count"]) == (32, 10)
     assert [o["purchase_order"] for o in sc["orders"]][:2] == [293, 288]
     assert sc["orders"][0]["confidence"] == "high"
+    assert sc["orders"][0]["kind"] == "duplicate_bill"
     assert sc["speech"].startswith("This year, I flagged 10 of 32")
 
 

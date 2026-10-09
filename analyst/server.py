@@ -19,19 +19,26 @@ Environment:
     MCP_HOST, MCP_PORT                  bind address (default 127.0.0.1:8000)
     PUBLIC_HOSTS                        comma-separated extra Host names to
                                         accept, e.g. a tunnel hostname
+    PIPER_VOICE                         path to a Piper .onnx voice for /speak
+                                        (default: data/voices/, fetched by
+                                        scripts/get_voice.py)
     DEMO_TODAY                          pin "today" (YYYY-MM-DD) so answers
                                         are reproducible; default: real date
 """
 
 from __future__ import annotations
 
+import io
 import os
 import re
+import wave
 from collections import Counter
 from datetime import date
+from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
+import anyio
 import uvicorn
 from mcp.server.mcpserver import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
@@ -39,14 +46,18 @@ from mcp.server.transport_security import TransportSecuritySettings
 from mcp.types import ToolAnnotations
 from pydantic import BaseModel, Field
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 
 from .periods import Period, parse_period
 from .store import Case, Store
 
-WEB_DIR = Path(__file__).resolve().parents[1] / "web"
+ROOT = Path(__file__).resolve().parents[1]
+WEB_DIR = ROOT / "web"
+VOICE_NAME = "en_US-ljspeech-medium"
+VOICE_PATHS = [ROOT / "data" / "voices" / f"{VOICE_NAME}.onnx",
+               Path.home() / ".local" / "share" / "piper-voices" / f"{VOICE_NAME}.onnx"]
 DEFAULT_PERIOD = "last 12 months"
 
 # How a finding kind reads in a count ("2 duplicate payments").
@@ -85,6 +96,7 @@ class FlaggedOrder(BaseModel):
     placed: str = Field(description="date the order was raised, YYYY-MM-DD")
     confidence: str = Field(description="high, medium or low")
     exposure: float = Field(description="dollars at risk")
+    kind: str = Field(description="main finding, e.g. duplicate_bill, split_purchase")
     headline: str
 
 
@@ -260,7 +272,7 @@ def list_anomalies(
             purchase_order=c.po, vendor=c.vendor, requester=person(c.requester),
             amount=c.po_amount, placed=c.placed.isoformat(),
             confidence=c.confidence, exposure=round(c.exposure, 2),
-            headline=c.findings[0]["short"]) for c in top])
+            kind=c.findings[0]["kind"], headline=c.findings[0]["short"]) for c in top])
 
 
 @mcp.tool(title="Explain a purchase order", annotations=READ_ONLY)
@@ -356,6 +368,42 @@ def summarise_period(period: PeriodArg = DEFAULT_PERIOD) -> PeriodSummary:
 async def health(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "cases": len(store.cases),
                          "detector": store.meta.get("detector")})
+
+
+@lru_cache(maxsize=1)
+def piper_voice():
+    """The neural voice for /speak, or None if Piper or the model is missing
+    (the web client then falls back to the browser's own voice)."""
+    try:
+        from piper import PiperVoice
+    except ImportError:
+        return None
+    env = os.environ.get("PIPER_VOICE")
+    path = next((p for p in ([Path(env)] if env else VOICE_PATHS) if p.is_file()), None)
+    return PiperVoice.load(str(path)) if path else None
+
+
+@lru_cache(maxsize=256)
+def synthesise(text: str) -> bytes:
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        piper_voice().synthesize_wav(text, w)
+    return buf.getvalue()
+
+
+@mcp.custom_route("/speak", methods=["POST"])
+async def speak(request: Request) -> Response:
+    """Text in, WAV out: the demo client's Alexa voice. Not an MCP tool."""
+    if await anyio.to_thread.run_sync(piper_voice) is None:
+        return JSONResponse({"error": "no voice installed; run scripts/get_voice.py"},
+                            status_code=503)
+    try:
+        text = str((await request.json())["text"]).strip()[:600]
+    except (ValueError, KeyError, TypeError):
+        return JSONResponse({"error": 'send JSON like {"text": "..."}'}, status_code=400)
+    if not text:
+        return JSONResponse({"error": "text is empty"}, status_code=400)
+    return Response(await anyio.to_thread.run_sync(synthesise, text), media_type="audio/wav")
 
 
 def build_app(host: str = "127.0.0.1"):

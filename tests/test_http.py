@@ -97,3 +97,20 @@ def test_foreign_origin_and_host_are_refused(base_url):
 
 def test_health(base_url):
     assert httpx.get(f"{base_url}/health").json()["cases"] == 309
+
+
+def test_web_client_is_served_from_the_same_origin(base_url):
+    page = httpx.get(f"{base_url}/")
+    assert page.status_code == 200 and 'src="app.js"' in page.text
+    assert httpx.get(f"{base_url}/mcp.js").status_code == 200
+
+
+def test_speak_returns_audio_or_says_why_not(base_url):
+    from analyst.server import piper_voice
+    r = httpx.post(f"{base_url}/speak", json={"text": "Order 293 was billed twice."}, timeout=30)
+    if piper_voice() is None:  # no voice model on this machine: the client falls back
+        assert r.status_code == 503 and "get_voice.py" in r.json()["error"]
+    else:
+        assert r.status_code == 200 and r.headers["content-type"] == "audio/wav"
+        assert r.content[:4] == b"RIFF"
+    assert httpx.post(f"{base_url}/speak", json={"nope": 1}).status_code in (400, 503)
