@@ -20,14 +20,6 @@
 <div class="aura" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <header class="top">
   <p class="brand">Books<span>.</span>check</p>
-  <div class="search" role="search">
-    <label for="find" class="sr">Find an order, vendor or person</label>
-    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3a7 7 0 0 1 5.6 11.2l4.6 4.6-1.4 1.4-4.6-4.6A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>
-    <input id="find" type="search" role="combobox" aria-expanded="false" aria-controls="found" aria-autocomplete="list"
-           autocomplete="off" spellcheck="false" placeholder="Find an order, vendor or person">
-    <kbd aria-hidden="true">/</kbd>
-    <ul id="found" class="found" role="listbox" aria-label="Matching orders" hidden></ul>
-  </div>
   <p class="status" id="status" role="status">Connecting to the analyst…</p>
 </header>
 <h1>Feed Alexa a fishy order</h1>
@@ -41,11 +33,13 @@
   <button class="mic" id="mic" type="button" aria-label="Ask Alexa out loud" title="Press and ask a question">
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2Z"/></svg>
   </button>
-  <form id="typed" class="typed">
-    <label for="q" class="sr">Type a question</label>
-    <input id="q" name="q" autocomplete="off" placeholder="Or type: anything suspicious this year?">
-    <button type="submit">Ask</button>
-  </form>
+  <div class="search" role="search">
+    <label for="find" class="sr">Ask a question, or find an order, vendor or person</label>
+    <input id="find" type="search" role="combobox" aria-expanded="false" aria-controls="found" aria-autocomplete="list"
+           autocomplete="off" spellcheck="false" placeholder="Ask, or find an order, vendor or person">
+    <kbd aria-hidden="true">/</kbd>
+    <ul id="found" class="found" role="listbox" aria-label="Suggestions" hidden></ul>
+  </div>
 </div>
 
 <button class="log-toggle" id="logToggle" type="button" aria-expanded="false" aria-controls="drawer">MCP log</button>

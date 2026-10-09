@@ -1,7 +1,7 @@
 // Glue: MCP results -> coins, screen, receipt and voice.
 
 import { McpClient, ToolError } from "./mcp.js";
-import { understand } from "./ask.js";
+import { understand, searchIn } from "./ask.js";
 import { createStage, FLOATING } from "./scene.js";
 
 const $ = id => document.getElementById(id);
@@ -179,7 +179,7 @@ async function show(tool, r) {
              ...(r.orders.length > 8 ? [["", `and ${r.orders.length - 8} more in the jar`, ""]] : [])],
       totalLabel: "AT RISK", total: money(r.exposure_total), note: "Drop a coin in for the full story." });
   } else if (tool === "search_orders") {
-    if (!r.total) { stage.screen({ mode: "error", head: "No match", sub: `Nothing matches “${r.query}”.` }); return; }
+    if (!r.total) { stage.screen({ mode: "error", head: "Not sure", sub: "Ask about suspicious orders, an order number, a period or a name." }); say(`${r.speech} ${HELP}`); return; }
     stage.screen({ mode: "answer", head: `${r.total} order${r.total === 1 ? "" : "s"}`, sub: `${cap(r.match_label)}, ${r.flagged_count} flagged`, accent: "#05A0D1" });
     const flagged = r.matches.filter(m => m.flagged);
     if (flagged.length) setTray({ orders: flagged, period: r.match_label }, `Every coin is a flagged order ${r.match_label}. Drop one in the slot and hear why.`);
@@ -228,20 +228,32 @@ async function pour() {
 }
 const feedCoin = po => ask({ tool: "explain_case", args: { purchase_order: String(po) } }, `Why was order ${po} flagged?`);
 
-// ---- the search bar: live matches from search_orders as you type ------------------
+// ---- one box for everything: ask a question or find an order -------------------------
+// As you type, the first suggestion is what Enter does (ask the question, or
+// show everything that matched); below it, matching orders from search_orders.
 const find = $("find"), found = $("found");
 let findSeq = 0, findTimer, options = [], active = -1;
+const HELP = "Try “anything suspicious this year?”, “why was order 293 flagged?”, “summary of last quarter” or a name like “Mia Patel”.";
 function closeFound() { found.hidden = true; find.setAttribute("aria-expanded", "false"); find.removeAttribute("aria-activedescendant"); active = -1; }
 function setActive(i) {
   options.forEach((li, j) => li.setAttribute("aria-selected", j === i));
   active = i;
   if (i >= 0) { find.setAttribute("aria-activedescendant", options[i].id); options[i].scrollIntoView({ block: "nearest" }); }
 }
+// what Enter does with this text
+function intentFor(q) {
+  const asked = understand(q);
+  return asked || { tool: "search_orders", args: { query: searchIn(q) || q, limit: 50 } };
+}
 async function lookUp() {
   const q = find.value.trim(), seq = ++findSeq;
   if (!q) return closeFound();
-  let r;
-  try { r = await mcp.call("search_orders", { query: q, limit: 8 }); } catch { return; }
+  const asked = understand(q); // a question, or null for a bare name / number
+  const term = asked ? (asked.tool === "search_orders" ? asked.args.query : null) : q;
+  let r = null;
+  if (term) {
+    try { r = await mcp.call("search_orders", { query: term, limit: 8 }); } catch { return; }
+  }
   if (seq !== findSeq) return; // a newer keystroke won
   const li = (cls, html, run) => {
     const el = document.createElement("li");
@@ -251,21 +263,23 @@ async function lookUp() {
   };
   options = [];
   const rows = [];
-  if (!r.total) rows.push(li("note", `No order, vendor or person matches “${esc(q)}”.`));
-  if (r.total > 1 && r.flagged_count)
-    rows.push(li("all", `Put the ${r.flagged_count} flagged order${r.flagged_count === 1 ? "" : "s"} ${esc(r.match_label)} on the mat`,
-      () => ask({ tool: "search_orders", args: { query: q, limit: 50 } }, `Find ${q}`)));
-  for (const m of r.matches)
+  if (asked && asked.tool !== "search_orders") rows.push(li("all", `Ask Alexa: “${esc(q)}”`, () => ask(asked, q)));
+  else if (r?.total > 1) rows.push(li("all", r.flagged_count
+      ? `Show all ${r.total} orders ${esc(r.match_label)} and put the ${r.flagged_count} flagged ones on the mat`
+      : `Show all ${r.total} orders ${esc(r.match_label)}`,
+    () => ask({ tool: "search_orders", args: { query: term, limit: 50 } }, q)));
+  for (const m of r?.matches || [])
     rows.push(li("", `<span class="po">${m.purchase_order}</span>
       <span class="who">${esc(m.vendor)}, ${esc(m.requester)}</span><span class="amt">${money(m.amount)}</span>
       <span class="why ${m.flagged ? "" : "ok"}">${m.flagged ? esc(m.headline) : "looks normal"}</span>`,
       () => ask({ tool: "explain_case", args: { purchase_order: String(m.purchase_order) } },
                 m.flagged ? `Why was order ${m.purchase_order} flagged?` : `Tell me about order ${m.purchase_order}`)));
-  if (r.total > r.matches.length) rows.push(li("note", `${r.total} matches. Keep typing to narrow them down.`));
+  if (r && r.total > r.matches.length) rows.push(li("note", `${r.total} matches. Keep typing to narrow them down.`));
+  if (!rows.length) rows.push(li("note", `Press Enter to ask. ${HELP}`));
   found.replaceChildren(...rows);
-  found.hidden = false; find.setAttribute("aria-expanded", "true"); setActive(-1);
+  found.hidden = false; find.setAttribute("aria-expanded", "true"); setActive(options.length ? 0 : -1);
 }
-function pick(run) { closeFound(); find.blur(); run(); }
+function pick(run) { closeFound(); find.value = ""; find.blur(); run(); }
 find.addEventListener("input", () => { clearTimeout(findTimer); findTimer = setTimeout(lookUp, 160); });
 find.addEventListener("focus", () => { if (find.value.trim()) lookUp(); });
 find.addEventListener("blur", () => setTimeout(closeFound, 120));
@@ -274,26 +288,17 @@ find.addEventListener("keydown", e => {
     e.preventDefault(); if (found.hidden || !options.length) return;
     setActive((active + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length);
   } else if (e.key === "Enter") {
-    e.preventDefault(); const o = options[active] || options.find(o => !o.classList.contains("all")) || options[0];
-    if (o) pick(o.run);
+    e.preventDefault();
+    const q = find.value.trim(); if (!q) return;
+    clearTimeout(findTimer);
+    const o = !found.hidden && options[active];
+    pick(o ? o.run : () => handle(q));
   } else if (e.key === "Escape") { closeFound(); find.blur(); }
 });
-addEventListener("keydown", e => { // "/" jumps to search, as on many sites
+addEventListener("keydown", e => { // "/" jumps to the box, as on many sites
   if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName)) { e.preventDefault(); find.focus(); }
 });
-
-// typed questions
-$("typed").addEventListener("submit", e => {
-  e.preventDefault();
-  const q = $("q").value.trim(); if (!q) return;
-  $("q").value = ""; handle(q);
-});
-const HELP = "Try “anything suspicious this year?”, “why was order 293 flagged?” or “give me a summary of last quarter”.";
-function handle(q) {
-  const intent = understand(q);
-  if (intent) ask(intent, q);
-  else { stage.screen({ mode: "error", head: "Not sure", sub: "Ask about suspicious orders, an order number or a period." }); say(`I can't answer that one yet. ${HELP}`); }
-}
+const handle = q => ask(intentFor(q), q);
 
 // ---- voice in (Chrome / Edge) ---------------------------------------------------------------
 const mic = $("mic");
