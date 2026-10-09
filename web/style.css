@@ -1,6 +1,7 @@
 :root {
-  --ledger: #BFE9B0;     /* ledger-paper mint */
-  --ink: #14251B;        /* green-black ruling ink */
+  --ledger: #F6E27A;     /* legal-pad yellow */
+  --rule: rgba(43, 84, 176, .4); /* the pad's blue ruling */
+  --ink: #14251B;        /* near-black ink */
   --alexa: #05A0D1;
   --alarm: #FF3D7F;
   --paper: #FFFDF4;
@@ -30,7 +31,7 @@ h1 {
   position: fixed; left: 50%; bottom: 104px; transform: translateX(-50%); width: min(780px, 92vw);
   font-size: 18px; line-height: 1.4; text-align: center; pointer-events: none;
 }
-.caption:not(:empty) { background: rgba(191, 233, 176, .9); border-radius: 14px; padding: 6px 16px; }
+.caption:not(:empty) { background: color-mix(in srgb, var(--ledger) 90%, transparent); border-radius: 14px; padding: 6px 16px; }
 .say { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); display: flex; gap: 14px; align-items: center; width: min(640px, 92vw); }
 .mic {
   flex: none; width: 60px; height: 60px; border-radius: 50%; border: 3px solid var(--ink); cursor: pointer;
@@ -45,7 +46,7 @@ h1 {
 
 .typed { flex: 1; display: flex; height: 52px; border: 3px solid var(--ink); border-radius: 999px; background: var(--paper); box-shadow: 0 6px 0 var(--ink); overflow: hidden; }
 .typed input { flex: 1; min-width: 0; border: 0; background: none; padding: 0 20px; font: 400 17px "Instrument Sans", sans-serif; color: var(--ink); }
-.typed input::placeholder { color: #55705C; }
+.typed input::placeholder { color: #5C626B; }
 .typed input:focus { outline: none; }
 .typed:focus-within { outline: 3px solid var(--alarm); outline-offset: 3px; }
 .typed button { border: 0; border-left: 3px solid var(--ink); background: var(--ink); color: var(--paper); font: 900 20px var(--display); padding: 0 22px; cursor: pointer; }
@@ -87,7 +88,7 @@ h1 {
 .log .ms.bad { color: #C0164F; font-weight: 700; }
 .log details[open] summary { background: var(--ledger); }
 .log p { font-weight: 600; margin: 10px 0 4px; }
-.log pre { font: 400 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; background: #F1F5EC; border-radius: 8px; padding: 8px 10px; max-height: 300px; overflow: auto; }
+.log pre { font: 400 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; background: color-mix(in srgb, var(--ledger) 22%, white); border-radius: 8px; padding: 8px 10px; max-height: 300px; overflow: auto; }
 
 body.dragging, body.dragging * { cursor: grabbing !important; }
 @media (max-width: 760px) {
@@ -96,3 +97,8 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   .log-toggle { bottom: auto; top: 18px; padding: 6px 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .mic.on::after { animation: none; } .drawer { transition: none; } }
+
+/* other paper colours, for trying out: ?paper=periwinkle | lilac | ledger */
+[data-paper="periwinkle"] { --ledger: #BFCBF2; --rule: rgba(26, 31, 58, .32); }
+[data-paper="lilac"] { --ledger: #D8CCFF; --rule: rgba(52, 36, 120, .32); }
+[data-paper="ledger"] { --ledger: #BFE9B0; --rule: rgba(20, 37, 27, .38); }

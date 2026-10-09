@@ -249,6 +249,8 @@ if (!Rec) {
 }
 
 // ---- start --------------------------------------------------------------------------------
+const paper = new URLSearchParams(location.search).get("paper");
+if (paper) document.documentElement.dataset.paper = paper;
 stage = await createStage(document.body, { onFeed: po => feedCoin(po), onPour: pour });
 mcp = new McpClient(new URL("mcp", location.href).href, onTraffic);
 try {

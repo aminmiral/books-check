@@ -1,12 +1,12 @@
 // The stage: an Echo Show with a coin slot, flagged orders as holographic
-// coins on ledger paper, and a receipt that prints the answer.
+// coins on ruled paper, and a receipt that prints the answer.
 // Knows nothing about MCP; app.js feeds it data.
 
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
-const C = { ledger: 0xBFE9B0, ink: 0x14251B, body: 0x1E2433, alexa: 0x05A0D1, rule: 0xE2354B };
+const C = { ink: 0x14251B, body: 0x1E2433, alexa: 0x05A0D1, rule: 0xE2354B };
 const FLOOR = -1.6, EX = -1.75, EY = -.15, SLOT_Y = EY + 1.0;
 const FACE_TILT = Math.PI / 2 - .2; // coin faces lean up toward the camera
 const HOMES = [[2.55, 1.0, .7], [4.4, 1.55, -.8], [4.45, -.45, .4], [2.35, -1.05, 1.75],
@@ -29,9 +29,11 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
   canvasHost.prepend(renderer.domElement);
   renderer.domElement.setAttribute("aria-hidden", "true");
 
+  const css = getComputedStyle(document.documentElement);
+  const paper = css.getPropertyValue("--ledger").trim(), ruling = css.getPropertyValue("--rule").trim();
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(C.ledger);
-  scene.fog = new THREE.Fog(C.ledger, 13, 30);
+  scene.background = new THREE.Color(paper);
+  scene.fog = new THREE.Fog(paper, 13, 30);
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), .04).texture;
   const camera = new THREE.PerspectiveCamera(32, 1, .1, 100);
   const CAM = new THREE.Vector3(0, 3.0, 11.5);
@@ -41,7 +43,7 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
     camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
   }
   fit(); addEventListener("resize", fit);
-  scene.add(new THREE.HemisphereLight(0xFFFFFF, 0x6E8F6A, 1.2));
+  scene.add(new THREE.HemisphereLight(0xFFFFFF, 0x8A8F9A, 1.2));
   const key = new THREE.DirectionalLight(0xFFFFFF, 2.4); key.position.set(-3, 6, 6); scene.add(key);
 
   // three flat tones: drawn, not rendered
@@ -56,16 +58,16 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
   const canvas = (w, h) => { const c = Object.assign(document.createElement("canvas"), { width: w, height: h }); return [c, c.getContext("2d")]; };
   const texture = (c, extra = {}) => Object.assign(new THREE.CanvasTexture(c), { colorSpace: THREE.SRGBColorSpace, ...extra });
 
-  // ---- ledger-paper floor --------------------------------------------------------
+  // ---- ruled-paper floor --------------------------------------------------------
   {
     const [c, x] = canvas(128, 128);
-    x.fillStyle = "#BFE9B0"; x.fillRect(0, 0, 128, 128);
-    x.fillStyle = "rgba(20,37,27,.38)"; x.fillRect(0, 0, 128, 3); x.fillRect(0, 0, 3, 128);
+    x.fillStyle = paper; x.fillRect(0, 0, 128, 128);
+    x.fillStyle = ruling; x.fillRect(0, 0, 128, 3); x.fillRect(0, 0, 3, 128);
     const t = texture(c, { anisotropy: renderer.capabilities.getMaxAnisotropy() });
     t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(64, 64);
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshBasicMaterial({ map: t }));
     floor.rotation.x = -Math.PI / 2; floor.position.y = FLOOR; scene.add(floor);
-    for (const xr of [-5.55, -5.45]) { // the red double rule down the ledger's margin
+    for (const xr of [-5.55, -5.45]) { // the red double rule down the margin
       const r = new THREE.Mesh(new THREE.PlaneGeometry(.05, 80), new THREE.MeshBasicMaterial({ color: C.rule }));
       r.rotation.x = -Math.PI / 2; r.position.set(xr, FLOOR + .002, 0); scene.add(r);
     }
