@@ -7,6 +7,15 @@ export const PROTOCOL = "2025-11-25";
 
 export class ToolError extends Error {}
 
+// The request's time on the wire, from the browser's Resource Timing, so a
+// busy page (3D rendering, voice) doesn't inflate the number.
+performance.setResourceTimingBufferSize?.(5000);
+function networkTime(url, t0) {
+  const hits = performance.getEntriesByName(url).filter(e => e.startTime >= t0 - 1 && e.responseEnd > 0);
+  const e = hits.sort((a, b) => a.startTime - b.startTime)[0];
+  return e ? e.responseEnd - e.startTime : null;
+}
+
 export class McpClient {
   constructor(url, onTraffic = () => {}) {
     this.url = url;
@@ -32,7 +41,7 @@ export class McpClient {
       this.onTraffic({ method, request: msg, error: String(err), ms: performance.now() - t0 });
       throw new Error("The analyst server isn't reachable. Is it running?");
     }
-    const ms = performance.now() - t0;
+    const ms = networkTime(this.url, t0) ?? performance.now() - t0;
     this.onTraffic({ method, request: msg, reply, status: res.status, ms });
     if (!res.ok) throw new Error(`The server answered ${res.status}.`);
     if (reply?.error) throw new Error(reply.error.message);

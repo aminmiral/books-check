@@ -100,11 +100,13 @@ h1 {
 .log-toggle[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
 .drawer {
   position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 92vw); z-index: 3;
-  background: var(--paper); border-left: 3px solid var(--ink); padding: 24px 20px 96px; overflow-y: auto;
+  background: var(--paper); color: var(--ink); border-left: 3px solid var(--ink); padding: 24px 20px 110px; overflow-y: auto;
   transform: translateX(105%); transition: transform .25s ease-out; font-size: 14px;
 }
 .log-open .drawer { transform: none; }
-.drawer-head { margin-bottom: 14px; }
+.drawer-title { font: 900 32px var(--display); margin-bottom: 6px; }
+.drawer-head { margin-bottom: 10px; }
+.drawer-stats { font: 700 13px var(--mono); margin-bottom: 14px; }
 .log { list-style: none; padding: 0; display: grid; gap: 8px; }
 .log summary { display: flex; justify-content: space-between; gap: 12px; cursor: pointer; padding: 8px 10px; border: 2px solid var(--ink); border-radius: 10px; }
 .log .m { font: 700 13px var(--mono); }

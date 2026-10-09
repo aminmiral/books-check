@@ -103,6 +103,7 @@ def test_web_client_is_served_from_the_same_origin(base_url):
     page = httpx.get(f"{base_url}/")
     assert page.status_code == 200 and 'src="app.js"' in page.text
     assert httpx.get(f"{base_url}/mcp.js").status_code == 200
+    assert page.headers["cache-control"] == "no-cache"  # edits show up on reload
 
 
 def test_speak_returns_audio_or_says_why_not(base_url):

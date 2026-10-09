@@ -410,6 +410,16 @@ async def speak(request: Request) -> Response:
     return Response(await anyio.to_thread.run_sync(synthesise, text), media_type="audio/wav")
 
 
+class FreshStaticFiles(StaticFiles):
+    """Static files the browser must revalidate, so an edited page is never
+    served stale from its cache (the ETag keeps unchanged files cheap)."""
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 def build_app(host: str = "127.0.0.1"):
     public = [h.strip() for h in os.environ.get("PUBLIC_HOSTS", "").split(",")
               if h.strip()]
@@ -421,7 +431,7 @@ def build_app(host: str = "127.0.0.1"):
     app = mcp.streamable_http_app(stateless_http=True, json_response=True,
                                   transport_security=security, host=host)
     if WEB_DIR.is_dir():  # the demo client, same origin as /mcp: no CORS needed
-        app.router.routes.append(Mount("/", StaticFiles(directory=WEB_DIR, html=True)))
+        app.router.routes.append(Mount("/", FreshStaticFiles(directory=WEB_DIR, html=True)))
     return app
 
 

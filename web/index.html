@@ -42,7 +42,9 @@
 
 <button class="log-toggle" id="logToggle" type="button" aria-expanded="false" aria-controls="drawer">MCP log</button>
 <aside class="drawer" id="drawer" aria-label="MCP messages">
-  <p class="drawer-head">Every message between this page and the MCP server, newest first.</p>
+  <h2 class="drawer-title">MCP log</h2>
+  <p class="drawer-head">Every message between this page and the MCP server, newest first. Click one to see the JSON.</p>
+  <p class="drawer-stats" id="logStats"></p>
   <ol class="log" id="log"></ol>
 </aside>
 

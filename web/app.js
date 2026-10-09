@@ -11,6 +11,7 @@ const cents = x => x == null ? "" : x.toLocaleString("en-US", { minimumFractionD
 
 // ---- the MCP traffic drawer --------------------------------------------------------
 const esc = s => s.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+const times = []; // round trips, for the drawer's summary line
 function onTraffic({ method, request, reply, status: code, ms, error }) {
   const tool = method === "tools/call" ? ` ${request.params.name}` : "";
   const li = document.createElement("li");
@@ -20,6 +21,11 @@ function onTraffic({ method, request, reply, status: code, ms, error }) {
     <p>Sent</p><pre>${esc(JSON.stringify(request, null, 2))}</pre>
     ${reply ? `<p>Received</p><pre>${esc(JSON.stringify(reply, null, 2))}</pre>` : ""}</details>`;
   log.prepend(li);
+  if (!error && method !== "notifications/initialized") {
+    times.push(ms);
+    const sorted = [...times].sort((a, b) => a - b), median = sorted[Math.floor(sorted.length / 2)];
+    $("logStats").textContent = `${times.length} request${times.length === 1 ? "" : "s"}, median ${Math.round(median)} ms, slowest ${Math.round(sorted.at(-1))} ms`;
+  }
   while (log.children.length > 40) log.lastChild.remove();
 }
 $("logToggle").onclick = () => {
