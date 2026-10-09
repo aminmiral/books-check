@@ -10,11 +10,12 @@ const C = { ledger: 0xBFE9B0, ink: 0x14251B, body: 0x1E2433, alexa: 0x05A0D1, ru
 const FLOOR = -1.6, EX = -1.75, EY = -.15, SLOT_Y = EY + 1.0;
 const FACE_TILT = Math.PI / 2 - .2; // coin faces lean up toward the camera
 const HOMES = [[2.55, 1.0, .7], [4.4, 1.55, -.8], [4.45, -.45, .4], [2.35, -1.05, 1.75],
-               [-4.3, 1.3, -.5], [-4.0, -.55, 1.3]];
-export const MAX_COINS = HOMES.length;
+               [-4.35, 1.45, -.6], [-4.55, .1, -.3]];
+export const FLOATING = HOMES.length; // coins in the air; the rest wait in the jar
+const JX = -3.75, JZ = 1.75, JR = .72, JH = 1.45, JAR_S = .42; // the jar, and coin size inside it
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-export async function createStage(canvasHost, { onFeed }) {
+export async function createStage(canvasHost, { onFeed, onPour }) {
   await Promise.all([
     document.fonts.load('900 120px "Big Shoulders Display"'), document.fonts.load('700 60px "Big Shoulders Display"'),
     document.fonts.load('600 30px "Instrument Sans"'), document.fonts.load('400 30px "Instrument Sans"'),
@@ -194,7 +195,8 @@ export async function createStage(canvasHost, { onFeed }) {
     const side = new THREE.MeshStandardMaterial({ map: edgeTex, roughness: .5 });
     const m = inked(new THREE.Mesh(coinGeo, [side, cap, cap]), .05);
     m.children[0].scale.set(1.045, 1.5, 1.045);
-    m.userData = { item, state: "fly", phase: Math.random() * 6, home: new THREE.Vector3(...home), h: 0, blob: blob(1.3, .9) };
+    m.userData = { item, state: "fly", where: home ? "float" : "jar", jarIndex: 0, phase: Math.random() * 6, h: 0, blob: blob(1.3, .9),
+                   home: new THREE.Vector3(...(home || [0, 0, 0])), tilt: [(Math.random() - .5) * .5, (Math.random() - .5) * .5] };
     m.rotation.x = Math.PI / 2; m.scale.setScalar(.01); m.position.set(EX, SLOT_Y - .3, 0);
     scene.add(m); return m;
   }
@@ -202,13 +204,69 @@ export async function createStage(canvasHost, { onFeed }) {
     scene.remove(m, m.userData.blob);
     m.material[1].map.dispose(); m.material.forEach(x => x.dispose()); m.userData.blob.material.dispose();
   }
-  // a coin rises out of the slot and floats to its spot
+  // ---- the jar: every flagged order that isn't floating -----------------------------
+  const jar = new THREE.Group(); jar.position.set(JX, FLOOR, JZ); scene.add(jar);
+  const glass = new THREE.Mesh(new THREE.CylinderGeometry(JR, JR, JH, 48, 1, true),
+    new THREE.MeshPhysicalMaterial({ color: 0xF2FFF8, transparent: true, opacity: .2, roughness: .05, side: THREE.DoubleSide, depthWrite: false }));
+  glass.position.y = JH / 2; jar.add(glass);
+  for (const y of [0, JH]) { // ink rims
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(JR, y ? .045 : .03, 8, 64), new THREE.MeshBasicMaterial({ color: C.ink }));
+    rim.rotation.x = Math.PI / 2; rim.position.y = y; jar.add(rim);
+  }
+  for (const sx of [-1, 1]) { // ink silhouette down each side
+    const line = new THREE.Mesh(new THREE.BoxGeometry(.035, JH, .035), new THREE.MeshBasicMaterial({ color: C.ink }));
+    line.position.set(sx * JR, JH / 2, 0); jar.add(line);
+  }
+  const glint = new THREE.Mesh(new THREE.PlaneGeometry(.07, JH * .7), new THREE.MeshBasicMaterial({ color: 0xFFFFFF, transparent: true, opacity: .6 }));
+  glint.position.set(-JR * .55, JH * .55, JR * .84); glint.rotation.y = -.6; jar.add(glint);
+  const [labelCanvas, lx] = canvas(512, 200);
+  const labelTex = texture(labelCanvas, { anisotropy: 8 });
+  const label = new THREE.Mesh(new THREE.CylinderGeometry(JR + .01, JR + .01, .5, 32, 1, true, -.95, 1.9),
+    new THREE.MeshBasicMaterial({ map: labelTex, side: THREE.DoubleSide }));
+  label.position.y = .34; jar.add(label);
+  function drawLabel(count, period) {
+    lx.fillStyle = "#FFFDF4"; lx.fillRect(0, 0, 512, 200);
+    lx.strokeStyle = "#14251B"; lx.lineWidth = 8; lx.strokeRect(4, 4, 504, 192);
+    lx.fillStyle = "#14251B"; lx.textAlign = "center"; lx.textBaseline = "alphabetic";
+    fitFont(lx, `${count} flagged`, 900, 112, '"Big Shoulders Display"', 460); lx.fillText(`${count} flagged`, 256, 118);
+    fitFont(lx, period, 700, 40, '"Sometype Mono"', 460); lx.fillText(period, 256, 170);
+    labelTex.needsUpdate = true;
+  }
+  blob(2.0, 1.4).position.set(JX, FLOOR + .01, JZ);
+
+  const jarCoins = () => coins.filter(c => c.userData.where === "jar" && c.userData.state !== "in")
+    .sort((a, b) => a.userData.jarIndex - b.userData.jarIndex);
+  function jarSpot(i) { // a loose pile: three to a layer, each layer turned
+    const layer = Math.floor(i / 3), a = (i % 3) * 2.094 + layer * 1.1;
+    return new THREE.Vector3(JX + Math.cos(a) * .36, FLOOR + .08 + layer * .075, JZ + Math.sin(a) * .36);
+  }
+  function settleJar() { // close the gaps after coins leave
+    jarCoins().forEach((m, i) => {
+      m.userData.jarIndex = i;
+      if (m.userData.state === "jar") { const p = jarSpot(i); to(m.position, { x: p.x, y: p.y, z: p.z }, .35, ease.out); }
+    });
+  }
+  // fly a coin to where it belongs now: its spot in the air, or into the jar from above
+  async function goHome(m, delay = 0) {
+    const u = m.userData; u.state = "fly"; m.visible = true; u.blob.visible = true;
+    if (u.where === "float") {
+      await Promise.all([to(m.position, { x: u.home.x, y: u.home.y, z: u.home.z }, .9, ease.back, delay),
+                         to(m.scale, { x: 1, y: 1, z: 1 }, .5, ease.out, delay),
+                         to(m.rotation, { x: FACE_TILT, y: 0, z: 0 }, .6, ease.out, delay)]);
+      if (u.state === "fly") u.state = "float";
+    } else {
+      const p = jarSpot(u.jarIndex);
+      await Promise.all([to(m.position, { x: p.x, y: FLOOR + JH + .9, z: p.z }, .55, ease.out, delay),
+                         to(m.scale, { x: JAR_S, y: JAR_S, z: JAR_S }, .55, ease.out, delay),
+                         to(m.rotation, { x: u.tilt[0], y: u.phase, z: u.tilt[1] }, .55, ease.out, delay)]);
+      await to(m.position, { y: p.y }, .35, ease.in);
+      if (u.state === "fly") { u.state = "jar"; tick(); }
+    }
+  }
+  // a coin rises out of the slot and goes home
   function spit(m, delay = 0) {
-    m.visible = true; m.userData.blob.visible = true; m.userData.state = "fly";
-    m.position.set(EX, SLOT_Y - .3, 0);
-    const h = m.userData.home;
-    return Promise.all([to(m.position, { x: h.x, y: h.y, z: h.z }, .9, ease.back, delay), to(m.scale, { x: 1, y: 1, z: 1 }, .5, ease.out, delay)])
-      .then(() => { if (m.userData.state === "fly") m.userData.state = "float"; });
+    m.position.set(EX, SLOT_Y - .3, 0); m.rotation.set(Math.PI / 2, 0, 0);
+    return goHome(m, delay);
   }
   // a coin flies over the slot and drops in
   async function swallow(m) {
@@ -311,6 +369,16 @@ export async function createStage(canvasHost, { onFeed }) {
     } catch { /* no audio: fine */ }
   }
 
+  function tick() {
+    try {
+      audio ||= new AudioContext();
+      const t = audio.currentTime, o = audio.createOscillator(), g = audio.createGain();
+      o.frequency.value = 2600 + Math.random() * 1400;
+      g.gain.setValueAtTime(.05, t); g.gain.exponentialRampToValueAtTime(.0001, t + .12);
+      o.connect(g).connect(audio.destination); o.start(t); o.stop(t + .14);
+    } catch { /* no audio: fine */ }
+  }
+
   // ---- pointer: hover, drag, drop, click ----------------------------------------------------
   const tip = document.getElementById("tip");
   const ray = new THREE.Raycaster(), mouse = new THREE.Vector2(9, 9);
@@ -318,19 +386,21 @@ export async function createStage(canvasHost, { onFeed }) {
   const dragPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), hit = new THREE.Vector3();
   const v3 = new THREE.Vector3();
   function showTip(m) {
-    tip.innerHTML = `<b>Order ${m.userData.item.po}</b>${m.userData.item.tip}`;
+    tip.innerHTML = m === jar ? `<b>${jarCoins().length} more in the jar</b>Click to pour out the next ${Math.min(FLOATING, jarCoins().length)}.`
+                              : `<b>Order ${m.userData.item.po}</b>${m.userData.item.tip}`;
     v3.copy(m.position).project(camera);
     if (!tip.dataset.mouse) { tip.style.left = (v3.x * .5 + .5) * innerWidth + "px"; tip.style.top = (-v3.y * .5 + .5) * innerHeight + "px"; }
     tip.style.opacity = 1;
   }
   const hideTip = () => { tip.style.opacity = 0; };
   const setPointer = e => mouse.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  const floating = () => coins.filter(c => c.userData.state === "float");
+  const floating = () => coins.filter(c => c.userData.state === "float" || c.userData.state === "jar");
   const nearSlot = m => Math.hypot(m.position.x - EX, m.position.y - (SLOT_Y + .5)) < 1.5;
   const el = renderer.domElement;
   el.addEventListener("pointerdown", e => {
     setPointer(e); ray.setFromCamera(mouse, camera);
     const m = ray.intersectObjects(floating(), false)[0]?.object;
+    if (!m && !locked && ray.intersectObject(glass, false).length) { onPour(); return; }
     if (!m || locked) return;
     drag = { m, x0: e.clientX, y0: e.clientY, moved: false };
     m.userData.state = "drag"; dragPlane.constant = -m.position.z;
@@ -347,20 +417,24 @@ export async function createStage(canvasHost, { onFeed }) {
     if (!drag) return;
     const { m, moved } = drag; drag = null; document.body.classList.remove("dragging");
     if (!moved || nearSlot(m)) onFeed(m.userData.item.po);
-    else { m.userData.state = "fly"; const h = m.userData.home; to(m.position, { x: h.x, y: h.y, z: h.z }, .7).then(() => m.userData.state = "float"); }
+    else goHome(m);
   });
   let focused = null; // keyboard focus on a coin's button
   function hover() {
     let m = focused;
-    if (!m && !drag) { ray.setFromCamera(mouse, camera); m = ray.intersectObjects(floating(), false)[0]?.object || null; }
+    if (!m && !drag) {
+      ray.setFromCamera(mouse, camera);
+      m = ray.intersectObjects(floating(), false)[0]?.object || (jarCoins().length && ray.intersectObject(glass, false).length ? jar : null);
+    }
     if (m !== hovered) {
       hovered = m;
       if (m) showTip(m); else hideTip();
-      document.body.style.cursor = m && !focused ? "grab" : "";
+      document.body.style.cursor = m && !focused ? (m === jar ? "pointer" : "grab") : "";
     }
   }
 
   // ---- loop ---------------------------------------------------------------------------
+  jar.userData.h = 0;
   const clock = new THREE.Clock(), black = new THREE.Color(0x05070C), blue = new THREE.Color(C.alexa);
   function frame() {
     const dt = Math.min(clock.getDelta(), .25); now += dt;
@@ -378,11 +452,14 @@ export async function createStage(canvasHost, { onFeed }) {
         m.position.set(u.home.x, u.home.y + bob * .12, u.home.z);
         m.rotation.set(FACE_TILT, still ? 0 : Math.sin(now * .9 + u.phase) * .35 + Math.sin(now * 9) * .25 * u.h, Math.sin(now * .7 + u.phase) * .08);
         m.scale.setScalar(1 + .12 * u.h);
-      } else if (u.state === "drag") m.scale.setScalar(1.15);
+      } else if (u.state === "jar") m.scale.setScalar(JAR_S * (1 + .25 * u.h));
+      else if (u.state === "drag") m.scale.setScalar(1.15);
       const lift = m.position.y - FLOOR; // shadow shrinks and fades as a coin rises
       u.blob.position.set(m.position.x, FLOOR + .01, m.position.z);
       u.blob.scale.setScalar(Math.max(.4, 1.3 - lift * .15)); u.blob.material.opacity = Math.max(.15, 1 - lift * .2);
     }
+    jar.userData.h += ((hovered === jar ? 1 : 0) - jar.userData.h) * .15;
+    jar.scale.setScalar(1 + .04 * jar.userData.h);
     if (receipt && !still) receipt.rotation.z = Math.sin(now * 1.1) * .015;
     camera.position.set(CAM.x + mx * .35, CAM.y + my * .2, CAM.z); camera.lookAt(0, -.1, 0);
     drawScreen(now);
@@ -399,24 +476,47 @@ export async function createStage(canvasHost, { onFeed }) {
     lock: on => { locked = on; },
     focusCoin: po => { focused = coins.find(c => c.userData.item.po === po) || null; if (!focused) tip.dataset.mouse = ""; },
     hasCoin: po => coins.some(c => c.userData.item.po === po),
-    // swap the floating coins for a new set: the old ones dive into the slot, the new ones pop out
-    async setCoins(items) {
+    // swap in a new set: the old coins dive into the slot, the new ones pop out;
+    // the first few float, the rest drop into the jar
+    async setCoins(items, { period }) {
       await arrived;
       const old = coins; coins = [];
       await Promise.all(old.map((m, i) => m.userData.state === "in" ? null :
-        (m.userData.state = "fly", to(m.position, { x: EX, y: SLOT_Y - .3, z: 0 }, .45, ease.in, i * .04))));
+        (m.userData.state = "fly", to(m.position, { x: EX, y: SLOT_Y - .3, z: 0 }, .45, ease.in, Math.min(i, 12) * .03))));
       old.forEach(disposeCoin);
-      coins = items.slice(0, MAX_COINS).map((it, i) => makeCoin(it, HOMES[i]));
+      drawLabel(items.length, period);
+      coins = items.map((it, i) => makeCoin(it, HOMES[i]));
+      coins.slice(FLOATING).forEach((m, i) => { m.userData.jarIndex = i; });
       if (old.length) gulp();
-      await Promise.all(coins.map((m, i) => { if (i % 2) setTimeout(gulp, i * 130); return spit(m, i * .13); }));
+      await Promise.all(coins.map((m, i) => {
+        if (i < FLOATING && i % 2) setTimeout(gulp, i * 130);
+        return spit(m, i < FLOATING ? i * .13 : FLOATING * .13 + (i - FLOATING) * .05);
+      }));
     },
-    // drop the order's coin in (if it's on the table); the previous one pops back out
+    jarCount: () => jarCoins().length,
+    // the floating coins drop into the jar and the next ones jump out
+    async pour() {
+      const pile = jarCoins();
+      const up = coins.filter(c => c.userData.where === "float" && c.userData.state === "float");
+      const n = Math.min(pile.length, up.length);
+      if (!n) return;
+      const out = pile.slice(0, n), down = up.slice(0, n); // next most serious out, these back on top
+      out.forEach((m, i) => { m.userData.where = "float"; m.userData.home.copy(down[i].userData.home); });
+      down.forEach((m, i) => { m.userData.where = "jar"; m.userData.jarIndex = pile.length - n + i; });
+      gulp();
+      await Promise.all([...out.map((m, i) => goHome(m, i * .08)), ...down.map((m, i) => goHome(m, .25 + i * .1))]);
+      settleJar();
+    },
+    // drop the order's coin in (from the air or the jar); the previous one goes back
     async feed(po) {
       const back = coins.find(c => c.userData.state === "in");
-      if (back && back.userData.item.po !== po) spit(back);
+      if (back && back.userData.item.po !== po) {
+        if (back.userData.where === "jar") back.userData.jarIndex = jarCoins().length; // back on top of the pile
+        spit(back);
+      }
       const m = coins.find(c => c.userData.item.po === po);
       hideTip();
-      if (m && m.userData.state !== "in") await swallow(m);
+      if (m && m.userData.state !== "in") { await swallow(m); settleJar(); }
       else { clink(); await gulp(); }
     },
   };

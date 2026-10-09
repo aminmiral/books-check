@@ -39,6 +39,12 @@ async def test_list_anomalies_ranks_rule_findings_first():
     assert sc["speech"].startswith("This year, I flagged 10 of 32")
 
 
+async def test_list_anomalies_returns_many_but_speaks_three():
+    sc = (await call("list_anomalies", {"period": "all time", "limit": 50})).structured_content
+    assert sc["flagged_count"] == len(sc["orders"]) == 45
+    assert "The top 3:" in sc["speech"] and sc["speech"].count("Purchase order") == 3
+
+
 async def test_list_anomalies_empty_period_still_answers():
     r = await call("list_anomalies", {"period": "this month"})
     assert not r.is_error
@@ -78,7 +84,7 @@ async def test_summary_counts_add_up():
 
 @pytest.mark.parametrize("name, args", [
     ("list_anomalies", {"period": "blue moon"}),
-    ("list_anomalies", {"limit": 50}),
+    ("list_anomalies", {"limit": 51}),
     ("explain_case", {"purchase_order": "the big one"}),
 ])
 async def test_bad_input_is_a_tool_error(name, args):

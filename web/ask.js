@@ -39,7 +39,7 @@ export function understand(text) {
   if (/summar|overview|recap|report|how (much|many)|total|spen[dt]|in a nutshell/.test(t))
     return { tool: "summarise_period", args: period ? { period } : {} };
   if (/suspicious|flag|anomal|odd|wrong|fraud|risk|anything|red flag|fishy|strange|weird|problem|issue|worr/.test(t))
-    return { tool: "list_anomalies", args: { ...(period ? { period } : {}), limit: 6 } };
+    return { tool: "list_anomalies", args: { ...(period ? { period } : {}), limit: 50 } };
   if (period) return { tool: "summarise_period", args: { period } };
   return null;
 }

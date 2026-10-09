@@ -59,6 +59,8 @@ VOICE_NAME = "en_US-ljspeech-medium"
 VOICE_PATHS = [ROOT / "data" / "voices" / f"{VOICE_NAME}.onnx",
                Path.home() / ".local" / "share" / "piper-voices" / f"{VOICE_NAME}.onnx"]
 DEFAULT_PERIOD = "last 12 months"
+MAX_LIST = 50  # orders list_anomalies can return
+SPOKEN = 3     # orders its speech names
 
 # How a finding kind reads in a count ("2 duplicate payments").
 KIND_NOUNS = {
@@ -238,17 +240,19 @@ PeriodArg = Annotated[str, Field(
 def list_anomalies(
     period: PeriodArg = DEFAULT_PERIOD,
     limit: Annotated[int, Field(
-        description="How many orders to describe (1-10). Also called top, count.")] = 3,
+        description="How many orders to return (1-50), most serious first; "
+                    "the spoken answer names at most 3. Also called top, count.")] = 3,
 ) -> AnomalyList:
     """Find suspicious, flagged or risky purchase orders (possible fraud,
     errors, red flags, anomalies) in a time period, most serious first."""
-    if not 1 <= limit <= 10:
-        raise ToolError("limit must be between 1 and 10.")
+    if not 1 <= limit <= MAX_LIST:
+        raise ToolError(f"limit must be between 1 and {MAX_LIST}.")
     p = parse_or_fail(period)
     checked = store.in_period(p)
     flagged = store.flagged_in(p)
     exposure = sum(c.exposure for c in flagged)
     top = flagged[:limit]
+    spoken = top[:SPOKEN]  # a voice answer stays short; the screen gets the rest
     lead = sentence_start(p.label)
 
     if not checked:
@@ -259,11 +263,11 @@ def list_anomalies(
     else:
         speech = (f"{lead}, I flagged {len(flagged)} of {len(checked)} purchase "
                   f"orders, with about {money(exposure)} at risk. ")
-        if len(top) < len(flagged):
-            speech += f"The top {len(top)}: "
+        if len(spoken) < len(flagged):
+            speech += f"The top {len(spoken)}: "
         speech += " ".join(
             f"Purchase order {c.po}, {c.vendor}: {c.findings[0]['short']}."
-            for c in top)
+            for c in spoken)
 
     return AnomalyList(
         speech=speech.strip(), period=p.label, orders_checked=len(checked),

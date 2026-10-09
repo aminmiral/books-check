@@ -2,7 +2,7 @@
 
 import { McpClient, ToolError } from "./mcp.js";
 import { understand } from "./ask.js";
-import { createStage, MAX_COINS } from "./scene.js";
+import { createStage, FLOATING } from "./scene.js";
 
 const $ = id => document.getElementById(id);
 const caption = $("caption"), status = $("status"), log = $("log"), keys = $("keys");
@@ -169,9 +169,9 @@ async function show(tool, r) {
     stage.screen({ mode: "answer", head: `${r.flagged_count} flagged`, sub: `${cap(r.period)}, of ${r.orders_checked} orders`, accent: "#FF3D7F" });
     setTray(r);
     stage.printReceipt({ kicker: "flagged by the detector", title: "FLAGGED", subtitle: cap(r.period),
-      rows: r.orders.map(o => [day(o.placed), `Order ${o.purchase_order}, ${o.vendor}`, money(o.exposure)]),
-      totalLabel: "AT RISK", total: money(r.exposure_total),
-      note: r.flagged_count > r.orders.length ? `Showing the top ${r.orders.length} of ${r.flagged_count}. Drop a coin in for the full story.` : "Drop a coin in for the full story." });
+      rows: [...r.orders.slice(0, 8).map(o => [day(o.placed), `Order ${o.purchase_order}, ${o.vendor}`, money(o.exposure)]),
+             ...(r.orders.length > 8 ? [["", `and ${r.orders.length - 8} more in the jar`, ""]] : [])],
+      totalLabel: "AT RISK", total: money(r.exposure_total), note: "Drop a coin in for the full story." });
   } else {
     stage.screen({ mode: "answer", head: money(r.total_value), sub: `spent ${r.period}, ${r.flagged_count} orders flagged`, accent: "#05A0D1" });
     stage.printReceipt({ kicker: "period summary", title: r.period.toUpperCase(), subtitle: `${r.orders_checked} purchase orders`,
@@ -184,20 +184,31 @@ async function show(tool, r) {
 // "this year" / "in March 2026" / "across all time"
 const during = p => p === "all time" ? "across all time" : /^(this|last)\b|^today$|^yesterday$/.test(p) ? p : `in ${p}`;
 
-// the coins on the table, plus a keyboard button for each
+// the coins on the table, plus a keyboard button for each. One coin of each
+// kind of finding floats first, so the table shows the variety; the rest,
+// still most serious first, go in the jar.
 function setTray(list) {
-  const items = list.orders.map(toCoin);
+  const firsts = [], seen = new Set();
+  for (const o of list.orders) if (!seen.has(o.kind) && firsts.length < FLOATING) { seen.add(o.kind); firsts.push(o); }
+  const items = [...firsts, ...list.orders.filter(o => !firsts.includes(o))].map(toCoin);
   $("lede").textContent = items.length
     ? `Every coin is a purchase order the detector flagged ${during(list.period)}. Drop one in the slot and hear why.`
     : `Nothing was flagged ${during(list.period)}. Ask about another period.`;
+  const pourKey = Object.assign(document.createElement("button"), { textContent: "Pour the next coins out of the jar", onclick: pour });
   keys.replaceChildren(...items.map(it => {
     const b = document.createElement("button");
     b.textContent = `Order ${it.po}: ${it.label}`;
     b.onfocus = () => stage.focusCoin(it.po); b.onblur = () => stage.focusCoin(null);
     b.onclick = () => feedCoin(it.po);
     return b;
-  }));
-  return stage.setCoins(items);
+  }), ...(items.length > FLOATING ? [pourKey] : []));
+  return stage.setCoins(items, { period: list.period });
+}
+async function pour() {
+  if (busy || !stage.jarCount()) return;
+  busy = true; stage.lock(true);
+  await stage.pour();
+  busy = false; stage.lock(false);
 }
 const feedCoin = po => ask({ tool: "explain_case", args: { purchase_order: String(po) } }, `Why was order ${po} flagged?`);
 
@@ -238,13 +249,13 @@ if (!Rec) {
 }
 
 // ---- start --------------------------------------------------------------------------------
-stage = await createStage(document.body, { onFeed: po => feedCoin(po) });
+stage = await createStage(document.body, { onFeed: po => feedCoin(po), onPour: pour });
 mcp = new McpClient(new URL("mcp", location.href).href, onTraffic);
 try {
   const init = await mcp.connect();
   status.textContent = `Connected to ${init.serverInfo.title || init.serverInfo.name}, MCP ${init.protocolVersion}, ${mcp.tools.length} tools`;
   status.classList.add("ok");
-  const first = await mcp.call("list_anomalies", { limit: MAX_COINS });
+  const first = await mcp.call("list_anomalies", { period: "all time", limit: 50 });
   await setTray(first);
   const s = new URLSearchParams(location.search).get("ask");
   if (s) handle(s);
