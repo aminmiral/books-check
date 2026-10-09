@@ -47,11 +47,12 @@ def base_url():
 async def test_handshake_and_latency(base_url):
     calls = [("list_anomalies", {"period": "this year"}),
              ("explain_case", {"purchase_order": "293"}),
-             ("summarise_period", {"period": "last quarter"})] * 10
+             ("summarise_period", {"period": "last quarter"}),
+             ("search_orders", {"query": "mia patel"})] * 10
     timings = []
     async with Client(f"{base_url}/mcp", mode="legacy") as c:
         assert c.protocol_version == "2025-11-25"
-        assert len((await c.list_tools()).tools) == 3
+        assert len((await c.list_tools()).tools) == 4
         for name, args in calls:
             t0 = time.perf_counter()
             r = await c.call_tool(name, args)

@@ -12,6 +12,7 @@ Stdlib only: the server never imports pandas or scikit-learn.
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -55,6 +56,11 @@ class Case:
         return self.start.date()
 
 
+# Words people say around a search that aren't part of what they're looking for.
+SEARCH_FILLER = {"po", "p", "o", "order", "orders", "purchase", "number", "no", "the",
+                 "by", "from", "for", "of", "s", "with", "find", "search", "show", "me"}
+
+
 class Store:
     def __init__(self, db_path: Path = DEFAULT_DB, today: date | None = None):
         self.today = today or date.today()
@@ -94,6 +100,26 @@ class Store:
         tier = {"high": 0, "medium": 0, "low": 1}
         return sorted((c for c in self.in_period(period) if c.flagged),
                       key=lambda c: (tier[c.confidence], -c.score))
+
+    def search(self, query: str) -> list[Case]:
+        """Orders matching every word of the query: a number matches the start
+        of an order number, a word matches the start of a word in the vendor
+        or the requester's or approver's name. Exact order number first, then
+        flagged orders by strength, then newest first."""
+        words = [w for w in re.findall(r"[a-z]+|\d+", query.lower()) if w not in SEARCH_FILLER]
+        if not words:
+            return []
+
+        def matches(c: Case) -> bool:
+            names = re.findall(r"[a-z]+", f"{c.vendor} {c.requester} {c.approver or ''}".lower())
+            return all(str(c.po).startswith(w) if w.isdigit()
+                       else any(n.startswith(w) for n in names) for w in words)
+
+        tier = {"high": 0, "medium": 0, "low": 1}
+        exact = {int(w) for w in words if w.isdigit()}
+        return sorted((c for c in self.cases.values() if matches(c)),
+                      key=lambda c: (c.po not in exact, not c.flagged,
+                                     tier.get(c.confidence, 2), -c.score, -c.po))
 
     @property
     def po_range(self) -> tuple[int, int]:

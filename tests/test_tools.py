@@ -22,7 +22,7 @@ async def call(name, args):
 async def test_tools_are_listed_read_only_with_output_schemas():
     async with Client(mcp) as c:
         tools = {t.name: t for t in (await c.list_tools()).tools}
-    assert set(tools) == {"list_anomalies", "explain_case", "summarise_period"}
+    assert set(tools) == {"list_anomalies", "explain_case", "summarise_period", "search_orders"}
     for t in tools.values():
         assert t.annotations.read_only_hint is True
         assert t.output_schema is not None
@@ -82,10 +82,25 @@ async def test_summary_counts_add_up():
     assert sc["top_vendor"] == "Vendor E"
 
 
+async def test_search_by_person_vendor_and_number():
+    mia = (await call("search_orders", {"query": "mia", "limit": 50})).structured_content
+    assert mia["match_label"] == "raised by Mia Patel" and mia["total"] == 91
+    assert all(m["requester"] == "Mia Patel" for m in mia["matches"])
+    assert mia["matches"][0]["flagged"]  # flagged orders come first
+    vendor = (await call("search_orders", {"query": "Vendor H"})).structured_content
+    assert vendor["match_label"] == "with Vendor H" and vendor["flagged_count"] == 9
+    one = (await call("search_orders", {"query": "PO 293"})).structured_content
+    assert one["matches"][0]["purchase_order"] == 293
+    assert one["speech"].endswith("billed twice.")
+    none = (await call("search_orders", {"query": "zzz"})).structured_content
+    assert none["total"] == 0 and "couldn't find" in none["speech"]
+
+
 @pytest.mark.parametrize("name, args", [
     ("list_anomalies", {"period": "blue moon"}),
     ("list_anomalies", {"limit": 51}),
     ("explain_case", {"purchase_order": "the big one"}),
+    ("search_orders", {"query": "  "}),
 ])
 async def test_bad_input_is_a_tool_error(name, args):
     r = await call(name, args)

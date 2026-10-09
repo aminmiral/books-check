@@ -38,17 +38,43 @@ canvas { display: block; touch-action: none; position: relative; z-index: 1; }
 [data-look="night"] .aura, [data-look="cobalt"] .aura, [data-look="mat"] .aura { display: none; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
-.top { position: fixed; left: 32px; top: 24px; right: 32px; display: flex; justify-content: space-between; align-items: baseline; gap: 20px; pointer-events: none; }
+.top { position: fixed; left: 32px; top: 20px; right: 32px; display: flex; justify-content: space-between; align-items: center; gap: 20px; pointer-events: none; }
 .brand { font: 900 26px var(--display); letter-spacing: .01em; }
 .brand span { color: var(--alexa); }
-.status { font-size: 14px; text-align: right; }
+.status { font-size: 14px; text-align: right; white-space: nowrap; }
+
+/* find an order, vendor or person */
+.search { position: relative; pointer-events: auto; flex: 0 1 420px; display: flex; align-items: center; height: 44px;
+  background: var(--paper); color: var(--ink); border: 3px solid var(--ink); border-radius: 999px; box-shadow: 0 4px 0 var(--ink); }
+.search:focus-within { outline: 3px solid var(--alarm); outline-offset: 3px; }
+.search svg { width: 20px; height: 20px; margin-left: 14px; fill: var(--ink); flex: none; }
+.search input { flex: 1; min-width: 0; border: 0; background: none; padding: 0 10px; font: 400 16px "Instrument Sans", sans-serif; color: var(--ink); }
+.search input:focus { outline: none; }
+.search input::placeholder { color: #5C626B; }
+.search input::-webkit-search-cancel-button { cursor: pointer; }
+.search kbd { font: 700 13px var(--mono); border: 2px solid #9AA0AA; color: #5C626B; border-radius: 6px; padding: 0 6px; margin-right: 14px; }
+.search:focus-within kbd { display: none; }
+.found { position: absolute; left: -3px; right: -3px; top: calc(100% + 10px); list-style: none; padding: 6px; margin: 0;
+  background: var(--paper); color: var(--ink); border: 3px solid var(--ink); border-radius: 18px; box-shadow: 5px 5px 0 var(--ink);
+  max-height: min(62vh, 520px); overflow-y: auto; }
+.found li { display: grid; grid-template-columns: auto 1fr auto; gap: 2px 12px; align-items: center; padding: 9px 12px; border-radius: 12px; cursor: pointer; }
+.found li[aria-selected="true"], .found li:hover { background: #ECEEF6; }
+.found .po { font: 900 22px var(--display); }
+.found .who { font-size: 14px; color: #4A505A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.found .amt { font: 700 14px var(--mono); text-align: right; }
+.found .why { grid-column: 2 / 4; justify-self: start; font-size: 13px; font-weight: 600; padding: 1px 9px; border-radius: 999px; background: #FFD3E2; color: #8A0F3B; }
+.found .why.ok { background: #E4E7EF; color: #4A505A; }
+.found li.all { display: block; font-weight: 600; background: var(--ink); color: var(--paper); margin-bottom: 4px; }
+.found li.all[aria-selected="true"], .found li.all:hover { background: #2E3150; }
+.found li.note { display: block; cursor: default; font-size: 14px; color: #4A505A; }
+.found li.note:hover { background: none; }
 .status.ok::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: #1E9E55; margin-right: 8px; box-shadow: 0 0 0 2px var(--ink); }
 
 h1 {
-  position: fixed; left: 0; right: 0; top: 62px; text-align: center; pointer-events: none;
+  position: fixed; left: 0; right: 0; top: 84px; text-align: center; pointer-events: none;
   font: 900 clamp(44px, 7.4vw, 104px)/.9 var(--display);
 }
-.lede { position: fixed; left: 0; right: 0; top: calc(62px + clamp(44px, 7.4vw, 104px) + 10px); text-align: center; font-size: 18px; padding: 0 24px; pointer-events: none; }
+.lede { position: fixed; left: 0; right: 0; top: calc(84px + clamp(44px, 7.4vw, 104px) + 10px); text-align: center; font-size: 18px; padding: 0 24px; pointer-events: none; }
 
 /* answer text, then the ways to ask */
 .caption {
@@ -93,13 +119,13 @@ h1 {
 
 /* the MCP traffic drawer */
 .log-toggle {
-  position: fixed; right: 24px; bottom: 32px; z-index: 4; cursor: pointer;
+  position: fixed; right: 24px; bottom: 32px; z-index: 7; cursor: pointer;
   font: 900 18px var(--display); color: var(--ink); background: var(--paper);
   border: 3px solid var(--ink); border-radius: 999px; padding: 8px 16px; box-shadow: 0 5px 0 var(--ink);
 }
 .log-toggle[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
 .drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 92vw); z-index: 3;
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 92vw); z-index: 6;
   background: var(--paper); color: var(--ink); border-left: 3px solid var(--ink); padding: 24px 20px 110px; overflow-y: auto;
   transform: translateX(105%); transition: transform .25s ease-out; font-size: 14px;
 }
@@ -118,9 +144,10 @@ h1 {
 
 body.dragging, body.dragging * { cursor: grabbing !important; }
 @media (max-width: 760px) {
-  .status { display: none; }
+  .status, .search kbd { display: none; }
   .lede { font-size: 15px; }
   .log-toggle { bottom: auto; top: 18px; padding: 6px 12px; }
 }
 @media (prefers-reduced-motion: reduce) { .mic.on::after, .aura i { animation: none; } .drawer { transition: none; } }
-.top, h1, .lede, .caption, .say, .tip, .keys { z-index: 2; }
+h1, .lede, .caption, .say, .tip, .keys { z-index: 2; }
+.top { z-index: 5; }

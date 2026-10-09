@@ -1,10 +1,11 @@
 """MCP server: purchase-fraud findings for a voice assistant.
 
-Three read-only tools, one per thing a user asks:
+Four read-only tools, one per thing a user asks:
 
     list_anomalies    "Anything suspicious last quarter?"
     explain_case      "Why was purchase order 293 flagged?"
     summarise_period  "Give me a summary of this year."
+    search_orders     "Find Mia Patel's orders." / "Vendor H"
 
 Every result carries a `speech` field written to be read aloud as-is, plus
 structured fields for a screen card. Nothing is computed per request beyond
@@ -51,7 +52,7 @@ from starlette.routing import Mount
 from starlette.staticfiles import StaticFiles
 
 from .periods import Period, parse_period
-from .store import Case, Store
+from .store import SEARCH_FILLER, Case, Store
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB_DIR = ROOT / "web"
@@ -135,6 +136,29 @@ class CaseExplanation(BaseModel):
     related_orders: list[int] = []
     next_step: str | None = None
     timeline: list[TimelineStep] = []
+
+
+class OrderMatch(BaseModel):
+    purchase_order: int
+    vendor: str
+    requester: str
+    approver: str
+    amount: float
+    placed: str = Field(description="date the order was raised, YYYY-MM-DD")
+    flagged: bool
+    confidence: str | None
+    exposure: float
+    kind: str | None = Field(description="main finding if flagged")
+    headline: str | None = Field(description="main finding in a few words, if flagged")
+
+
+class SearchResult(BaseModel):
+    speech: str
+    query: str
+    match_label: str = Field(description="who or what matched, e.g. 'raised by Mia Patel'")
+    total: int
+    flagged_count: int
+    matches: list[OrderMatch]
 
 
 class KindCount(BaseModel):
@@ -326,6 +350,66 @@ def explain_case(
         timeline=[TimelineStep(at=s.at.isoformat(timespec="minutes"),
                                activity=s.activity, actor=person(s.actor),
                                amount=s.amount) for s in case.steps])
+
+
+@mcp.tool(title="Search purchase orders", annotations=READ_ONLY)
+def search_orders(
+    query: Annotated[str, Field(
+        description="An order number (or its first digits), a vendor such as "
+                    "'Vendor H', or a person's name such as 'Mia Patel' or 'Tom'. "
+                    "Also called find, look up, filter.")],
+    limit: Annotated[int, Field(
+        description=f"How many matches to return (1-{MAX_LIST}).")] = 8,
+) -> SearchResult:
+    """Find purchase orders by order number, vendor, or the person who raised
+    or approved them. Flagged orders come first."""
+    if not 1 <= limit <= MAX_LIST:
+        raise ToolError(f"limit must be between 1 and {MAX_LIST}.")
+    if not query or not query.strip():
+        raise ToolError("Say what to look for: an order number, a vendor or a name.")
+    found = store.search(query)
+    flagged = [c for c in found if c.flagged]
+    label = match_label(query, found)
+
+    if not found:
+        speech = f"I couldn't find an order, vendor or person matching '{query.strip()}'."
+    elif len(found) == 1 or str(found[0].po) == re.sub(r"\D", "", query):
+        c = found[0]
+        what = c.findings[0]["short"] if c.flagged else "looks normal"
+        speech = (f"Order {c.po}, from {c.vendor} for {money(c.po_amount)}, raised by "
+                  f"{person(c.requester)}: {what}.")
+    else:
+        speech = (f"I found {plural(len(found), 'order', 'orders')} {label}, and "
+                  f"{len(flagged)} {'is' if len(flagged) == 1 else 'are'} flagged.")
+        if flagged:
+            top = flagged[0]
+            speech += f" The most serious: order {top.po}, {top.findings[0]['short']}."
+
+    return SearchResult(
+        speech=speech, query=query.strip(), match_label=label, total=len(found),
+        flagged_count=len(flagged),
+        matches=[OrderMatch(
+            purchase_order=c.po, vendor=c.vendor, requester=person(c.requester),
+            approver=person(c.approver), amount=c.po_amount, placed=c.placed.isoformat(),
+            flagged=c.flagged, confidence=c.confidence, exposure=round(c.exposure, 2),
+            kind=c.findings[0]["kind"] if c.flagged else None,
+            headline=c.findings[0]["short"] if c.flagged else None) for c in found[:limit]])
+
+
+def match_label(query: str, found: list[Case]) -> str:
+    """'with Vendor H' / 'raised by Mia Patel' when every match shares it."""
+    if found:
+        for field, phrase in (("vendor", "with {}"), ("requester", "raised by {}"),
+                              ("approver", "approved by {}")):
+            values = {getattr(c, field) for c in found}
+            if len(values) == 1 and None not in values:
+                value = values.pop()
+                shown = value if field == "vendor" else person(value)
+                words = [w for w in re.findall(r"[a-z]+", query.lower())]
+                if words and all(any(n.startswith(w) for n in shown.lower().split())
+                                 for w in words if w not in SEARCH_FILLER):
+                    return phrase.format(shown)
+    return f"matching '{query.strip()}'"
 
 
 @mcp.tool(title="Summarise a period", annotations=READ_ONLY)

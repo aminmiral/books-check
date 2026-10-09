@@ -178,6 +178,16 @@ async function show(tool, r) {
       rows: [...r.orders.slice(0, 8).map(o => [day(o.placed), `Order ${o.purchase_order}, ${o.vendor}`, money(o.exposure)]),
              ...(r.orders.length > 8 ? [["", `and ${r.orders.length - 8} more in the jar`, ""]] : [])],
       totalLabel: "AT RISK", total: money(r.exposure_total), note: "Drop a coin in for the full story." });
+  } else if (tool === "search_orders") {
+    if (!r.total) { stage.screen({ mode: "error", head: "No match", sub: `Nothing matches “${r.query}”.` }); return; }
+    stage.screen({ mode: "answer", head: `${r.total} order${r.total === 1 ? "" : "s"}`, sub: `${cap(r.match_label)}, ${r.flagged_count} flagged`, accent: "#05A0D1" });
+    const flagged = r.matches.filter(m => m.flagged);
+    if (flagged.length) setTray({ orders: flagged, period: r.match_label }, `Every coin is a flagged order ${r.match_label}. Drop one in the slot and hear why.`);
+    stage.printReceipt({ kicker: "search", title: "FOUND", subtitle: cap(r.match_label),
+      rows: [...r.matches.slice(0, 8).map(m => [day(m.placed), `Order ${m.purchase_order}, ${m.vendor}`, m.flagged ? money(m.exposure) : "ok"]),
+             ...(r.total > 8 ? [["", `and ${r.total - 8} more`, ""]] : [])],
+      totalLabel: "FLAGGED", total: `${r.flagged_count} of ${r.total}`,
+      note: flagged.length ? "The flagged ones are on the mat now." : "None of these were flagged." });
   } else {
     stage.screen({ mode: "answer", head: money(r.total_value), sub: `spent ${r.period}, ${r.flagged_count} orders flagged`, accent: "#05A0D1" });
     stage.printReceipt({ kicker: "period summary", title: r.period.toUpperCase(), subtitle: `${r.orders_checked} purchase orders`,
@@ -193,13 +203,13 @@ const during = p => p === "all time" ? "across all time" : /^(this|last)\b|^toda
 // the coins on the table, plus a keyboard button for each. One coin of each
 // kind of finding floats first, so the table shows the variety; the rest,
 // still most serious first, go in the jar.
-function setTray(list) {
+function setTray(list, lede) {
   const firsts = [], seen = new Set();
   for (const o of list.orders) if (!seen.has(o.kind) && firsts.length < FLOATING) { seen.add(o.kind); firsts.push(o); }
   const items = [...firsts, ...list.orders.filter(o => !firsts.includes(o))].map(toCoin);
-  $("lede").textContent = items.length
+  $("lede").textContent = lede || (items.length
     ? `Every coin is a purchase order the detector flagged ${during(list.period)}. Drop one in the slot and hear why.`
-    : `Nothing was flagged ${during(list.period)}. Ask about another period.`;
+    : `Nothing was flagged ${during(list.period)}. Ask about another period.`);
   const pourKey = Object.assign(document.createElement("button"), { textContent: "Pour the next coins out of the jar", onclick: pour });
   keys.replaceChildren(...items.map(it => {
     const b = document.createElement("button");
@@ -217,6 +227,60 @@ async function pour() {
   busy = false; stage.lock(false);
 }
 const feedCoin = po => ask({ tool: "explain_case", args: { purchase_order: String(po) } }, `Why was order ${po} flagged?`);
+
+// ---- the search bar: live matches from search_orders as you type ------------------
+const find = $("find"), found = $("found");
+let findSeq = 0, findTimer, options = [], active = -1;
+function closeFound() { found.hidden = true; find.setAttribute("aria-expanded", "false"); find.removeAttribute("aria-activedescendant"); active = -1; }
+function setActive(i) {
+  options.forEach((li, j) => li.setAttribute("aria-selected", j === i));
+  active = i;
+  if (i >= 0) { find.setAttribute("aria-activedescendant", options[i].id); options[i].scrollIntoView({ block: "nearest" }); }
+}
+async function lookUp() {
+  const q = find.value.trim(), seq = ++findSeq;
+  if (!q) return closeFound();
+  let r;
+  try { r = await mcp.call("search_orders", { query: q, limit: 8 }); } catch { return; }
+  if (seq !== findSeq) return; // a newer keystroke won
+  const li = (cls, html, run) => {
+    const el = document.createElement("li");
+    el.className = cls; el.innerHTML = html;
+    if (run) { el.id = `found-${options.length}`; el.setAttribute("role", "option"); el.onmousedown = e => { e.preventDefault(); pick(run); }; options.push(el); el.run = run; }
+    return el;
+  };
+  options = [];
+  const rows = [];
+  if (!r.total) rows.push(li("note", `No order, vendor or person matches “${esc(q)}”.`));
+  if (r.total > 1 && r.flagged_count)
+    rows.push(li("all", `Put the ${r.flagged_count} flagged order${r.flagged_count === 1 ? "" : "s"} ${esc(r.match_label)} on the mat`,
+      () => ask({ tool: "search_orders", args: { query: q, limit: 50 } }, `Find ${q}`)));
+  for (const m of r.matches)
+    rows.push(li("", `<span class="po">${m.purchase_order}</span>
+      <span class="who">${esc(m.vendor)}, ${esc(m.requester)}</span><span class="amt">${money(m.amount)}</span>
+      <span class="why ${m.flagged ? "" : "ok"}">${m.flagged ? esc(m.headline) : "looks normal"}</span>`,
+      () => ask({ tool: "explain_case", args: { purchase_order: String(m.purchase_order) } },
+                m.flagged ? `Why was order ${m.purchase_order} flagged?` : `Tell me about order ${m.purchase_order}`)));
+  if (r.total > r.matches.length) rows.push(li("note", `${r.total} matches. Keep typing to narrow them down.`));
+  found.replaceChildren(...rows);
+  found.hidden = false; find.setAttribute("aria-expanded", "true"); setActive(-1);
+}
+function pick(run) { closeFound(); find.blur(); run(); }
+find.addEventListener("input", () => { clearTimeout(findTimer); findTimer = setTimeout(lookUp, 160); });
+find.addEventListener("focus", () => { if (find.value.trim()) lookUp(); });
+find.addEventListener("blur", () => setTimeout(closeFound, 120));
+find.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault(); if (found.hidden || !options.length) return;
+    setActive((active + (e.key === "ArrowDown" ? 1 : -1) + options.length) % options.length);
+  } else if (e.key === "Enter") {
+    e.preventDefault(); const o = options[active] || options.find(o => !o.classList.contains("all")) || options[0];
+    if (o) pick(o.run);
+  } else if (e.key === "Escape") { closeFound(); find.blur(); }
+});
+addEventListener("keydown", e => { // "/" jumps to search, as on many sites
+  if (e.key === "/" && !/INPUT|TEXTAREA/.test(document.activeElement?.tagName)) { e.preventDefault(); find.focus(); }
+});
 
 // typed questions
 $("typed").addEventListener("submit", e => {
@@ -260,7 +324,7 @@ stage = await createStage(document.body, { onFeed: po => feedCoin(po), onPour: p
 mcp = new McpClient(new URL("mcp", location.href).href, onTraffic);
 try {
   const init = await mcp.connect();
-  status.textContent = `Connected to ${init.serverInfo.title || init.serverInfo.name}, MCP ${init.protocolVersion}, ${mcp.tools.length} tools`;
+  status.textContent = `Connected: ${mcp.tools.length} MCP tools, protocol ${init.protocolVersion}`;
   status.classList.add("ok");
   const first = await mcp.call("list_anomalies", { period: "all time", limit: 50 });
   await setTray(first);

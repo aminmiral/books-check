@@ -20,6 +20,14 @@
 <div class="aura" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 <header class="top">
   <p class="brand">Books<span>.</span>check</p>
+  <div class="search" role="search">
+    <label for="find" class="sr">Find an order, vendor or person</label>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 3a7 7 0 0 1 5.6 11.2l4.6 4.6-1.4 1.4-4.6-4.6A7 7 0 1 1 10 3Zm0 2a5 5 0 1 0 0 10 5 5 0 0 0 0-10Z"/></svg>
+    <input id="find" type="search" role="combobox" aria-expanded="false" aria-controls="found" aria-autocomplete="list"
+           autocomplete="off" spellcheck="false" placeholder="Find an order, vendor or person">
+    <kbd aria-hidden="true">/</kbd>
+    <ul id="found" class="found" role="listbox" aria-label="Matching orders" hidden></ul>
+  </div>
   <p class="status" id="status" role="status">Connecting to the analyst…</p>
 </header>
 <h1>Feed Alexa a fishy order</h1>

@@ -30,12 +30,24 @@ export function orderIn(text) {
   return m ? m[1] : null;
 }
 
+// "find Vendor H", "orders from Mia Patel", "show me Tom's orders" -> "vendor h", ...
+export function searchIn(text) {
+  const t = text.toLowerCase().replace(/[?.!,]+$/, "");
+  const m = t.match(/\b(?:find|search(?: for)?|look up|pull up)\s+(.+)/)
+         || t.match(/\borders?\s+(?:from|by|for|with|placed by|raised by|approved by)\s+(.+)/)
+         || t.match(/\b([a-z]+(?:\s[a-z]+)?)['’]s\s+orders\b/);
+  if (!m || /suspicious|flag|anomal|odd|wrong|fraud|risk|anything|summar/.test(m[1])) return null;
+  return m[1].replace(/['’]s\s+orders?$|\s+orders?$/, "").trim() || null;
+}
+
 // -> { tool, args } or null
 export function understand(text) {
   const t = text.toLowerCase();
   const period = periodIn(t);
   const po = orderIn(t);
   if (po && !/\b(summar|overview|recap)/.test(t)) return { tool: "explain_case", args: { purchase_order: po } };
+  const who = searchIn(t);
+  if (who) return { tool: "search_orders", args: { query: who, limit: 50 } };
   if (/summar|overview|recap|report|how (much|many)|total|spen[dt]|in a nutshell/.test(t))
     return { tool: "summarise_period", args: period ? { period } : {} };
   if (/suspicious|flag|anomal|odd|wrong|fraud|risk|anything|red flag|fishy|strange|weird|problem|issue|worr/.test(t))
