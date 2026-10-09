@@ -1,7 +1,8 @@
 :root {
-  --ledger: #F6E27A;     /* legal-pad yellow */
-  --rule: rgba(43, 84, 176, .4); /* the pad's blue ruling */
-  --ink: #14251B;        /* near-black ink */
+  --bg: #F3F4FA;         /* stage */
+  --fg: #1A1B2E;         /* text on the stage */
+  --panel: rgba(243, 244, 250, .82); /* behind the answer text */
+  --ink: #1A1B2E;        /* outlines, buttons */
   --alexa: #05A0D1;
   --alarm: #FF3D7F;
   --paper: #FFFDF4;
@@ -10,8 +11,29 @@
 }
 * { box-sizing: border-box; margin: 0; }
 html, body { height: 100%; overflow: hidden; }
-body { background: var(--ledger); font-family: "Instrument Sans", sans-serif; color: var(--ink); }
-canvas { display: block; touch-action: none; }
+body { background: var(--bg); font-family: "Instrument Sans", sans-serif; color: var(--fg); }
+canvas { display: block; touch-action: none; position: relative; z-index: 1; }
+
+/* holo: soft iridescent light drifting behind the stage */
+.aura { position: fixed; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
+.aura i { position: absolute; border-radius: 50%; filter: blur(90px); opacity: .7; animation: drift 26s ease-in-out infinite alternate; }
+.aura i:nth-child(1) { width: 52vw; height: 52vw; left: -12vw; top: 18vh; background: #FF9AD5; }
+.aura i:nth-child(2) { width: 46vw; height: 46vw; right: -10vw; top: -14vh; background: #8FD8FF; animation-delay: -8s; }
+.aura i:nth-child(3) { width: 40vw; height: 40vw; left: 34vw; bottom: -22vh; background: #FFE36E; animation-delay: -15s; }
+.aura i:nth-child(4) { width: 30vw; height: 30vw; right: 8vw; bottom: 4vh; background: #B79CFF; animation-delay: -4s; }
+@keyframes drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(6vw, -5vh) scale(1.15); } }
+
+/* night: a dark stage under a spotlight */
+[data-look="night"] {
+  --bg: radial-gradient(ellipse 80% 70% at 45% 62%, #2C2066 0%, #140E33 48%, #07060F 100%);
+  --fg: #F1EEFF; --panel: rgba(20, 14, 51, .78);
+}
+/* cobalt: one bold colour, white type */
+[data-look="cobalt"] {
+  --bg: radial-gradient(ellipse 90% 80% at 50% 40%, #3D55FF 0%, #2236E0 55%, #1626B0 100%);
+  --fg: #FFFFFF; --panel: rgba(28, 44, 200, .8);
+}
+[data-look="night"] .aura, [data-look="cobalt"] .aura { display: none; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
 .top { position: fixed; left: 32px; top: 24px; right: 32px; display: flex; justify-content: space-between; align-items: baseline; gap: 20px; pointer-events: none; }
@@ -31,7 +53,7 @@ h1 {
   position: fixed; left: 50%; bottom: 104px; transform: translateX(-50%); width: min(780px, 92vw);
   font-size: 18px; line-height: 1.4; text-align: center; pointer-events: none;
 }
-.caption:not(:empty) { background: color-mix(in srgb, var(--ledger) 90%, transparent); border-radius: 14px; padding: 6px 16px; }
+.caption:not(:empty) { background: var(--panel); backdrop-filter: blur(8px); border-radius: 14px; padding: 6px 16px; }
 .say { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%); display: flex; gap: 14px; align-items: center; width: min(640px, 92vw); }
 .mic {
   flex: none; width: 60px; height: 60px; border-radius: 50%; border: 3px solid var(--ink); cursor: pointer;
@@ -69,13 +91,13 @@ h1 {
 
 /* the MCP traffic drawer */
 .log-toggle {
-  position: fixed; right: 24px; bottom: 32px; z-index: 3; cursor: pointer;
+  position: fixed; right: 24px; bottom: 32px; z-index: 4; cursor: pointer;
   font: 900 18px var(--display); color: var(--ink); background: var(--paper);
   border: 3px solid var(--ink); border-radius: 999px; padding: 8px 16px; box-shadow: 0 5px 0 var(--ink);
 }
 .log-toggle[aria-expanded="true"] { background: var(--ink); color: var(--paper); }
 .drawer {
-  position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 92vw); z-index: 2;
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(420px, 92vw); z-index: 3;
   background: var(--paper); border-left: 3px solid var(--ink); padding: 24px 20px 96px; overflow-y: auto;
   transform: translateX(105%); transition: transform .25s ease-out; font-size: 14px;
 }
@@ -86,9 +108,9 @@ h1 {
 .log .m { font: 700 13px var(--mono); }
 .log .ms { font: 400 13px var(--mono); }
 .log .ms.bad { color: #C0164F; font-weight: 700; }
-.log details[open] summary { background: var(--ledger); }
+.log details[open] summary { background: #E6E8F5; }
 .log p { font-weight: 600; margin: 10px 0 4px; }
-.log pre { font: 400 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; background: color-mix(in srgb, var(--ledger) 22%, white); border-radius: 8px; padding: 8px 10px; max-height: 300px; overflow: auto; }
+.log pre { font: 400 12px/1.45 var(--mono); white-space: pre-wrap; word-break: break-word; background: #F1F2F8; border-radius: 8px; padding: 8px 10px; max-height: 300px; overflow: auto; }
 
 body.dragging, body.dragging * { cursor: grabbing !important; }
 @media (max-width: 760px) {
@@ -96,9 +118,5 @@ body.dragging, body.dragging * { cursor: grabbing !important; }
   .lede { font-size: 15px; }
   .log-toggle { bottom: auto; top: 18px; padding: 6px 12px; }
 }
-@media (prefers-reduced-motion: reduce) { .mic.on::after { animation: none; } .drawer { transition: none; } }
-
-/* other paper colours, for trying out: ?paper=periwinkle | lilac | ledger */
-[data-paper="periwinkle"] { --ledger: #BFCBF2; --rule: rgba(26, 31, 58, .32); }
-[data-paper="lilac"] { --ledger: #D8CCFF; --rule: rgba(52, 36, 120, .32); }
-[data-paper="ledger"] { --ledger: #BFE9B0; --rule: rgba(20, 37, 27, .38); }
+@media (prefers-reduced-motion: reduce) { .mic.on::after, .aura i { animation: none; } .drawer { transition: none; } }
+.top, h1, .lede, .caption, .say, .tip, .keys { z-index: 2; }

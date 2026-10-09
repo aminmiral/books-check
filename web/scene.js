@@ -1,18 +1,25 @@
 // The stage: an Echo Show with a coin slot, flagged orders as holographic
-// coins on ruled paper, and a receipt that prints the answer.
+// coins, and a receipt that prints the answer. The backdrop is CSS behind a
+// transparent canvas; LOOKS sets what the 3D side needs for each style.
 // Knows nothing about MCP; app.js feeds it data.
 
 import * as THREE from "three";
 import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
 import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
-const C = { ink: 0x14251B, body: 0x1E2433, alexa: 0x05A0D1, rule: 0xE2354B };
+const C = { ink: 0x14251B, body: 0x1E2433, alexa: 0x05A0D1 };
 const FLOOR = -1.6, EX = -1.75, EY = -.15, SLOT_Y = EY + 1.0;
 const FACE_TILT = Math.PI / 2 - .2; // coin faces lean up toward the camera
 const HOMES = [[2.55, 1.0, .7], [4.4, 1.55, -.8], [4.45, -.45, .4], [2.35, -1.05, 1.75],
                [-4.35, 1.45, -.6], [-4.55, .1, -.3]];
 export const FLOATING = HOMES.length; // coins in the air; the rest wait in the jar
 const JX = -3.75, JZ = 1.75, JR = .72, JH = 1.45, JAR_S = .42; // the jar, and coin size inside it
+// outline: ink around every object; shadow: contact shadows; spot: a pool of light on the floor
+const LOOKS = {
+  holo:   { outline: 0x1A1B2E, shadow: "26,27,46", spot: false, hemi: 1.2 },
+  night:  { outline: 0xD8D0FF, shadow: "0,0,0", spot: true, hemi: .55 },
+  cobalt: { outline: 0x0B1150, shadow: "6,10,70", spot: false, hemi: 1.2 },
+};
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 export async function createStage(canvasHost, { onFeed, onPour }) {
@@ -23,17 +30,15 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
   ]);
 
   // ---- renderer, camera, light ------------------------------------------------
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  const look = LOOKS[document.documentElement.dataset.look] || LOOKS.holo;
+  C.ink = look.outline;
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
   canvasHost.prepend(renderer.domElement);
   renderer.domElement.setAttribute("aria-hidden", "true");
 
-  const css = getComputedStyle(document.documentElement);
-  const paper = css.getPropertyValue("--ledger").trim(), ruling = css.getPropertyValue("--rule").trim();
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(paper);
-  scene.fog = new THREE.Fog(paper, 13, 30);
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), .04).texture;
   const camera = new THREE.PerspectiveCamera(32, 1, .1, 100);
   const CAM = new THREE.Vector3(0, 3.0, 11.5);
@@ -43,7 +48,7 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
     camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
   }
   fit(); addEventListener("resize", fit);
-  scene.add(new THREE.HemisphereLight(0xFFFFFF, 0x8A8F9A, 1.2));
+  scene.add(new THREE.HemisphereLight(0xFFFFFF, 0x8A8F9A, look.hemi));
   const key = new THREE.DirectionalLight(0xFFFFFF, 2.4); key.position.set(-3, 6, 6); scene.add(key);
 
   // three flat tones: drawn, not rendered
@@ -58,23 +63,20 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
   const canvas = (w, h) => { const c = Object.assign(document.createElement("canvas"), { width: w, height: h }); return [c, c.getContext("2d")]; };
   const texture = (c, extra = {}) => Object.assign(new THREE.CanvasTexture(c), { colorSpace: THREE.SRGBColorSpace, ...extra });
 
-  // ---- ruled-paper floor --------------------------------------------------------
-  {
-    const [c, x] = canvas(128, 128);
-    x.fillStyle = paper; x.fillRect(0, 0, 128, 128);
-    x.fillStyle = ruling; x.fillRect(0, 0, 128, 3); x.fillRect(0, 0, 3, 128);
-    const t = texture(c, { anisotropy: renderer.capabilities.getMaxAnisotropy() });
-    t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(64, 64);
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshBasicMaterial({ map: t }));
-    floor.rotation.x = -Math.PI / 2; floor.position.y = FLOOR; scene.add(floor);
-    for (const xr of [-5.55, -5.45]) { // the red double rule down the margin
-      const r = new THREE.Mesh(new THREE.PlaneGeometry(.05, 80), new THREE.MeshBasicMaterial({ color: C.rule }));
-      r.rotation.x = -Math.PI / 2; r.position.set(xr, FLOOR + .002, 0); scene.add(r);
-    }
+  // ---- a pool of light on the floor (night look) -----------------------------------
+  if (look.spot) {
+    const [c, x] = canvas(256, 256), g = x.createRadialGradient(128, 128, 0, 128, 128, 128);
+    g.addColorStop(0, "rgba(190,175,255,.34)"); g.addColorStop(.55, "rgba(140,120,255,.12)"); g.addColorStop(1, "rgba(140,120,255,0)");
+    x.fillStyle = g; x.fillRect(0, 0, 256, 256);
+    const pool = new THREE.Mesh(new THREE.PlaneGeometry(16, 8), new THREE.MeshBasicMaterial({ map: texture(c), transparent: true, depthWrite: false }));
+    pool.rotation.x = -Math.PI / 2; pool.position.set(-.3, FLOOR, .4); scene.add(pool);
+    const spot = new THREE.SpotLight(0xE4DCFF, 60, 20, .5, .6); spot.position.set(-1.2, 8, 4); spot.target.position.set(-1.2, 0, 0);
+    scene.add(spot, spot.target);
   }
   const blobTex = (() => {
     const [c, x] = canvas(128, 128), g = x.createRadialGradient(64, 64, 0, 64, 64, 64);
-    g.addColorStop(0, "rgba(20,37,27,.55)"); g.addColorStop(.6, "rgba(20,37,27,.25)"); g.addColorStop(1, "rgba(20,37,27,0)");
+    const sh = look.shadow;
+    g.addColorStop(0, `rgba(${sh},.5)`); g.addColorStop(.6, `rgba(${sh},.22)`); g.addColorStop(1, `rgba(${sh},0)`);
     x.fillStyle = g; x.fillRect(0, 0, 128, 128); return new THREE.CanvasTexture(c);
   })();
   function blob(w, d) {
