@@ -249,7 +249,7 @@ if (!Rec) {
 }
 
 // ---- start --------------------------------------------------------------------------------
-document.documentElement.dataset.look = new URLSearchParams(location.search).get("look") || "holo";
+document.documentElement.dataset.look = new URLSearchParams(location.search).get("look") || "mat";
 stage = await createStage(document.body, { onFeed: po => feedCoin(po), onPour: pour });
 mcp = new McpClient(new URL("mcp", location.href).href, onTraffic);
 try {

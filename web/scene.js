@@ -9,7 +9,7 @@ import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
 
 const C = { ink: 0x14251B, body: 0x1E2433, alexa: 0x05A0D1 };
 const FLOOR = -1.6, EX = -1.75, EY = -.15, SLOT_Y = EY + 1.0;
-const FACE_TILT = Math.PI / 2 - .2; // coin faces lean up toward the camera
+let FACE_TILT = Math.PI / 2 - .2; // coin faces lean up toward the camera
 const HOMES = [[2.55, 1.0, .7], [4.4, 1.55, -.8], [4.45, -.45, .4], [2.35, -1.05, 1.75],
                [-4.35, 1.45, -.6], [-4.55, .1, -.3]];
 export const FLOATING = HOMES.length; // coins in the air; the rest wait in the jar
@@ -19,6 +19,8 @@ const LOOKS = {
   holo:   { outline: 0x1A1B2E, shadow: "26,27,46", spot: false, hemi: 1.2 },
   night:  { outline: 0xD8D0FF, shadow: "0,0,0", spot: true, hemi: .55 },
   cobalt: { outline: 0x0B1150, shadow: "6,10,70", spot: false, hemi: 1.2 },
+  // a teller's rubber counting mat seen from above the desk
+  mat:    { outline: 0x1C0B0E, shadow: "18,4,6", spot: false, hemi: .6, key: 1.7, mat: true, cam: [0, 5.4, 11], aim: [0, -.7, 0], tilt: .5 },
 };
 const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -30,8 +32,9 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
   ]);
 
   // ---- renderer, camera, light ------------------------------------------------
-  const look = LOOKS[document.documentElement.dataset.look] || LOOKS.holo;
+  const look = LOOKS[document.documentElement.dataset.look] || LOOKS.mat;
   C.ink = look.outline;
+  if (look.tilt) FACE_TILT = Math.PI / 2 - look.tilt;
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.setSize(innerWidth, innerHeight);
@@ -41,15 +44,16 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
   const scene = new THREE.Scene();
   scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), .04).texture;
   const camera = new THREE.PerspectiveCamera(32, 1, .1, 100);
-  const CAM = new THREE.Vector3(0, 3.0, 11.5);
+  const CAM = new THREE.Vector3(...(look.cam || [0, 3.0, 11.5])), AIM = new THREE.Vector3(...(look.aim || [0, -.1, 0]));
+  const camZ = CAM.z;
   function fit() {
     camera.aspect = innerWidth / innerHeight;
-    CAM.z = 11.5 * Math.max(1, 1.55 / camera.aspect); // step back on narrow screens
+    CAM.z = camZ * Math.max(1, 1.55 / camera.aspect); // step back on narrow screens
     camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
   }
   fit(); addEventListener("resize", fit);
   scene.add(new THREE.HemisphereLight(0xFFFFFF, 0x8A8F9A, look.hemi));
-  const key = new THREE.DirectionalLight(0xFFFFFF, 2.4); key.position.set(-3, 6, 6); scene.add(key);
+  const key = new THREE.DirectionalLight(0xFFFFFF, look.key ?? 2.4); key.position.set(-3, 6, 6); scene.add(key);
 
   // three flat tones: drawn, not rendered
   const ramp = new THREE.DataTexture(new Uint8Array([90, 90, 90, 255, 175, 175, 175, 255, 255, 255, 255, 255]), 3, 1);
@@ -62,6 +66,84 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
   }
   const canvas = (w, h) => { const c = Object.assign(document.createElement("canvas"), { width: w, height: h }); return [c, c.getContext("2d")]; };
   const texture = (c, extra = {}) => Object.assign(new THREE.CanvasTexture(c), { colorSpace: THREE.SRGBColorSpace, ...extra });
+
+  // ---- the counting mat (mat look) --------------------------------------------------
+  if (look.mat) scene.add(countingMat());
+  // seen from higher up, the coins sit lower so they stay clear of the headline
+  const MAT_HOMES = [[2.6, .25, 1.0], [4.35, .55, -1.5], [4.7, -.45, .7], [2.45, -.95, 2.0], [-4.75, .55, -1.6], [-4.45, -.3, -.7]];
+  const homeAt = h => look.mat ? MAT_HOMES[HOMES.indexOf(h)] : h;
+  function countingMat() {
+    const group = new THREE.Group();
+    // the desk: dark walnut planks
+    {
+      const [c, x] = canvas(1024, 1024);
+      x.fillStyle = "#3A2216"; x.fillRect(0, 0, 1024, 1024);
+      for (let i = 0; i < 700; i++) { // grain
+        const y = Math.random() * 1024, a = Math.random() * 6;
+        x.strokeStyle = Math.random() < .6 ? `rgba(20,9,4,${.15 + Math.random() * .25})` : `rgba(150,95,60,${.05 + Math.random() * .1})`;
+        x.lineWidth = .8 + Math.random() * 2.2; x.beginPath(); x.moveTo(0, y);
+        for (let xx = 0; xx <= 1024; xx += 64) x.lineTo(xx, y + Math.sin(xx / 140 + a) * 6);
+        x.stroke();
+      }
+      x.fillStyle = "rgba(10,4,2,.6)"; for (const y of [0, 256, 512, 768]) x.fillRect(0, y, 1024, 3); // plank seams
+      const t = texture(c, { anisotropy: renderer.capabilities.getMaxAnisotropy() });
+      t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 6);
+      const desk = new THREE.Mesh(new THREE.PlaneGeometry(60, 60), new THREE.MeshBasicMaterial({ map: t }));
+      desk.rotation.x = -Math.PI / 2; desk.position.y = FLOOR - .03; group.add(desk);
+    }
+    // the mat: 15 x 10.5 units of oxblood rubber, printed in cream
+    const MW = 15, MD = 10.5, MZ = -1.25, K = 136, W = MW * K, H = MD * K;
+    const X = v => (v + MW / 2) * K, Z = v => (v - MZ + MD / 2) * K; // world -> canvas pixels
+    const [c, x] = canvas(W, H);
+    x.beginPath(); x.roundRect(0, 0, W, H, 60); x.clip();
+    const g = x.createRadialGradient(X(-.5), Z(.4), 40, X(-.5), Z(.4), W * .6);
+    g.addColorStop(0, "#7A2E33"); g.addColorStop(.55, "#5E2025"); g.addColorStop(1, "#43161A");
+    x.fillStyle = g; x.fillRect(0, 0, W, H);
+    for (let i = 0; i < 70000; i++) { // rubber grain
+      x.fillStyle = Math.random() < .5 ? "rgba(0,0,0,.2)" : "rgba(255,220,210,.06)";
+      x.fillRect(Math.random() * W, Math.random() * H, 1.6, 1.6);
+    }
+    for (let i = 0; i < 30; i++) { // scuffs
+      x.strokeStyle = `rgba(255,230,220,${.03 + Math.random() * .05})`; x.lineWidth = 1 + Math.random() * 2;
+      const sx = Math.random() * W, sy = Math.random() * H, a = Math.random() * 6;
+      x.beginPath(); x.moveTo(sx, sy); x.quadraticCurveTo(sx + 40, sy + 10, sx + Math.cos(a) * 160, sy + Math.sin(a) * 60); x.stroke();
+    }
+    // printing: cream ink on its own layer, so wear only takes ink away
+    const [pc, p] = canvas(W, H);
+    p.fillStyle = p.strokeStyle = "rgba(246,231,212,.85)";
+    p.lineWidth = 4; p.beginPath(); p.roundRect(22, 22, W - 44, H - 44, 44); p.stroke(); // border
+    const inch = .5 * K, rz = Z(3.55), r0 = X(-6.9);
+    p.lineWidth = 3; p.beginPath(); p.moveTo(r0, rz); p.lineTo(r0 + 27 * inch, rz); p.stroke();
+    for (let i = 0; i <= 27 * 8; i++) { // ruler along the front, in eighths of an inch
+      const len = i % 8 === 0 ? 30 : i % 4 === 0 ? 20 : i % 2 === 0 ? 13 : 8;
+      p.lineWidth = i % 8 === 0 ? 3 : 2;
+      p.beginPath(); p.moveTo(r0 + i * inch / 8, rz); p.lineTo(r0 + i * inch / 8, rz - len); p.stroke();
+      if (i % 8 === 0 && i) { p.font = '700 20px "Sometype Mono"'; p.textAlign = "center"; p.fillText(String(i / 8), r0 + i * inch / 8, rz - 40); }
+    }
+    for (let z = Z(-6.2), i = 0; z <= rz; z += inch / 4, i++) { // and down the left side
+      p.lineWidth = 2; p.beginPath(); p.moveTo(X(-7.05), z); p.lineTo(X(-7.05) + (i % 4 ? 10 : 22), z); p.stroke();
+    }
+    [["1¢", .3], ["5¢", .34], ["10¢", .28], ["25¢", .38], ["$1", .42]].forEach(([t, r], i) => { // coin guides
+      const cx = X(-6.25 + i * .95), cz = Z(2.75);
+      p.setLineDash([10, 8]); p.lineWidth = 3; p.beginPath(); p.arc(cx, cz, r * K, 0, 7); p.stroke(); p.setLineDash([]);
+      p.font = '700 20px "Sometype Mono"'; p.textAlign = "center"; p.textBaseline = "middle"; p.fillText(t, cx, cz);
+    });
+    p.textBaseline = "alphabetic";
+    p.globalAlpha = .7; p.font = '900 74px "Big Shoulders Display"'; p.textAlign = "center"; // the mat's slogan
+    p.fillText("COUNT TWICE.", X(.55), Z(.55)); p.fillText("PAY ONCE.", X(.55), Z(1.1));
+    p.globalAlpha = 1;
+    p.globalCompositeOperation = "destination-out"; // worn flecks
+    for (let i = 0; i < 22000; i++) { p.fillStyle = `rgba(0,0,0,${.3 + Math.random() * .7})`; p.fillRect(Math.random() * W, Math.random() * H, 2 + Math.random() * 3, 2 + Math.random() * 2); }
+    x.drawImage(pc, 0, 0);
+    x.strokeStyle = "rgba(30,8,8,.35)"; x.lineWidth = 9; x.beginPath(); x.arc(X(5.5), Z(-.9), 60, .3, 5.9); x.stroke(); // a coffee ring
+    x.strokeStyle = "rgba(30,8,8,.18)"; x.lineWidth = 4; x.beginPath(); x.arc(X(5.5), Z(-.9), 52, 0, 7); x.stroke();
+    const t = texture(c, { anisotropy: renderer.capabilities.getMaxAnisotropy() });
+    const mat = new THREE.Mesh(new THREE.PlaneGeometry(MW, MD), new THREE.MeshBasicMaterial({ map: t, transparent: true, alphaTest: .5 }));
+    mat.rotation.x = -Math.PI / 2; mat.position.set(0, FLOOR, MZ); group.add(mat);
+    const edge = new THREE.Mesh(new THREE.PlaneGeometry(MW + .12, MD + .12), new THREE.MeshBasicMaterial({ color: 0x1A0709 }));
+    edge.rotation.x = -Math.PI / 2; edge.position.set(.04, FLOOR - .015, MZ + .05); group.add(edge); // the rubber's thickness
+    return group;
+  }
 
   // ---- a pool of light on the floor (night look) -----------------------------------
   if (look.spot) {
@@ -193,14 +275,14 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
     x.font = '700 40px "Big Shoulders Display"'; x.fillText(`ORDER ${item.po}`, 256, 392);
     const face = texture(c); face.center.set(.5, .5); face.rotation = Math.PI / 2;
     const cap = new THREE.MeshPhysicalMaterial({
-      map: face, emissive: 0xFFFFFF, emissiveMap: face, emissiveIntensity: .3, envMapIntensity: .5,
-      roughness: .3, metalness: .15, iridescence: .7, iridescenceIOR: 1.5, iridescenceThicknessRange: [250, 600],
+      map: face, emissive: 0xFFFFFF, emissiveMap: face, emissiveIntensity: look.mat ? .55 : .3, envMapIntensity: look.mat ? .15 : .5,
+      roughness: look.mat ? .75 : .3, metalness: look.mat ? 0 : .15, iridescence: look.mat ? .2 : .7, iridescenceIOR: 1.5, iridescenceThicknessRange: [250, 600],
     });
     const side = new THREE.MeshStandardMaterial({ map: edgeTex, roughness: .5 });
     const m = inked(new THREE.Mesh(coinGeo, [side, cap, cap]), .05);
     m.children[0].scale.set(1.045, 1.5, 1.045);
     m.userData = { item, state: "fly", where: home ? "float" : "jar", jarIndex: 0, phase: Math.random() * 6, h: 0, blob: blob(1.3, .9),
-                   home: new THREE.Vector3(...(home || [0, 0, 0])), tilt: [(Math.random() - .5) * .5, (Math.random() - .5) * .5] };
+                   home: new THREE.Vector3(...(home ? homeAt(home) : [0, 0, 0])), tilt: [(Math.random() - .5) * .5, (Math.random() - .5) * .5] };
     m.rotation.x = Math.PI / 2; m.scale.setScalar(.01); m.position.set(EX, SLOT_Y - .3, 0);
     scene.add(m); return m;
   }
@@ -465,7 +547,7 @@ export async function createStage(canvasHost, { onFeed, onPour }) {
     jar.userData.h += ((hovered === jar ? 1 : 0) - jar.userData.h) * .15;
     jar.scale.setScalar(1 + .04 * jar.userData.h);
     if (receipt && !still) receipt.rotation.z = Math.sin(now * 1.1) * .015;
-    camera.position.set(CAM.x + mx * .35, CAM.y + my * .2, CAM.z); camera.lookAt(0, -.1, 0);
+    camera.position.set(CAM.x + mx * .35, CAM.y + my * .2, CAM.z); camera.lookAt(AIM);
     drawScreen(now);
     renderer.render(scene, camera);
     requestAnimationFrame(frame);

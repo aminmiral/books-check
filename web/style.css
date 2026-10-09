@@ -33,7 +33,9 @@ canvas { display: block; touch-action: none; position: relative; z-index: 1; }
   --bg: radial-gradient(ellipse 90% 80% at 50% 40%, #3D55FF 0%, #2236E0 55%, #1626B0 100%);
   --fg: #FFFFFF; --panel: rgba(28, 44, 200, .8);
 }
-[data-look="night"] .aura, [data-look="cobalt"] .aura { display: none; }
+/* mat: a teller's oxblood rubber counting mat fills the stage */
+[data-look="mat"] { --bg: #2A170E; --fg: #F6EBDD; --panel: rgba(42, 10, 14, .78); }
+[data-look="night"] .aura, [data-look="cobalt"] .aura, [data-look="mat"] .aura { display: none; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 
 .top { position: fixed; left: 32px; top: 24px; right: 32px; display: flex; justify-content: space-between; align-items: baseline; gap: 20px; pointer-events: none; }
