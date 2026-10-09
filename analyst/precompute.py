@@ -79,19 +79,29 @@ def case_facts(g: pd.DataFrame) -> dict:
 
 
 def split_neighbours(facts: pd.DataFrame) -> dict[int, list[int]]:
-    """POs by the same requester to the same vendor within the window, each
-    just under the approval threshold. Mirrors the benchmark's cross-trace
-    features, but keeps the members so the finding can name them."""
+    """POs by the same requester to the same vendor, each just under the
+    approval threshold, chained together when consecutive orders are within
+    the window. Mirrors the benchmark's cross-trace features, but keeps the
+    members so the finding can name them. Every member of a group gets the
+    same group, so the orders never disagree about how many there were."""
     near = facts[(facts["po_amount"] / APPROVAL_THRESHOLD).between(*NEAR_BAND)]
     window = pd.Timedelta(days=WINDOW_DAYS)
     out = {}
-    for po, row in near.iterrows():
-        group = near[(near["requester"] == row["requester"])
-                     & (near["vendor"] == row["vendor"])
-                     & ((near["start"] - row["start"]).abs() <= window)]
+    for _, same in near.sort_values("start").groupby(["requester", "vendor"]):
+        group, last = [], None
+        for po, row in same.iterrows():
+            if last is not None and row["start"] - last > window:
+                if len(group) >= 2:
+                    out.update({p: sorted(group) for p in group})
+                group = []
+            group.append(po); last = row["start"]
         if len(group) >= 2:
-            out[po] = sorted(group.index.tolist())
+            out.update({p: sorted(group) for p in group})
     return out
+
+
+def span_words(days: int) -> str:
+    return "on the same day" if days == 0 else f"in {days} day{'s' * (days != 1)}"
 
 
 def evidence_for(f: dict, g: pd.DataFrame, neighbours: list[int] | None,
@@ -130,13 +140,14 @@ def evidence_for(f: dict, g: pd.DataFrame, neighbours: list[int] | None,
     if neighbours:
         group = facts.loc[neighbours]
         others = [p for p in neighbours if p != f["po"]]
+        span = (group["start"].max() - group["start"].min()).days
         ev.append({"kind": "split_purchase", "tier": "context",
                    "exposure": f["po_amount"], "related": others,
                    "short": f"one of {len(neighbours)} orders split under "
                             f"the approval limit",
                    "text": f"It is one of {len(neighbours)} orders "
                            f"{person(f['requester'])} placed with "
-                           f"{f['vendor']} within two weeks, each just under "
+                           f"{f['vendor']} {span_words(span)}, each just under "
                            f"the {money(APPROVAL_THRESHOLD)} approval limit, "
                            f"{money(group['po_amount'].sum())} in total."})
     ts = g["timestamp"]

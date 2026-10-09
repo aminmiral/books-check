@@ -52,6 +52,15 @@ async def test_explain_split_purchase_names_the_other_orders():
     assert len(sc["timeline"]) == 5
 
 
+async def test_split_orders_agree_on_their_group():
+    groups = {}
+    for po in (238, 239, 240):
+        sc = (await call("explain_case", {"purchase_order": str(po)})).structured_content
+        groups[po] = sorted([po, *sc["related_orders"]])
+        assert "one of 3 orders" in sc["speech"] and "in 17 days" in sc["speech"]
+    assert groups[238] == groups[239] == groups[240] == [238, 239, 240]
+
+
 async def test_explain_normal_and_unknown_orders():
     normal = (await call("explain_case", {"purchase_order": "12"})).structured_content
     assert normal["found"] and not normal["flagged"] and not normal["findings"]
