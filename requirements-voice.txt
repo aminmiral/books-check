@@ -1,0 +1,3 @@
+# Optional: the neural voice behind /speak. piper-tts is GPL-3.0-or-later and is
+# installed separately; without it the web client uses the browser's own voice.
+piper-tts>=1.3
