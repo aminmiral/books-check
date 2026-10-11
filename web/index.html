@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Books.check: ask Alexa about suspicious purchase orders</title>
+<meta name="description" content="A simulated Alexa+ Echo Show that answers questions about suspicious purchase orders through an MCP server.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;900&family=Instrument+Sans:wght@400;600&family=Sometype+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="aura" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+<header class="top">
+  <p class="brand">Books<span>.</span>check</p>
+  <p class="status" id="status" role="status">Connecting to the analyst…</p>
+</header>
+<h1>Feed Alexa a fishy order</h1>
+<p class="lede" id="lede">Loading the flagged orders…</p>
+
+<div class="keys" id="keys" aria-label="Flagged orders"></div>
+<div class="tip" id="tip" aria-hidden="true"></div>
+
+<p class="caption" id="caption" aria-live="polite"></p>
+<div class="say">
+  <button class="mic" id="mic" type="button" aria-label="Ask Alexa out loud" title="Press and ask a question">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V22h2v-3.08A7 7 0 0 0 19 12h-2Z"/></svg>
+  </button>
+  <div class="search" role="search">
+    <label for="find" class="sr">Ask a question, or find an order, vendor or person</label>
+    <input id="find" type="search" role="combobox" aria-expanded="false" aria-controls="found" aria-autocomplete="list"
+           autocomplete="off" spellcheck="false" placeholder="Ask, or find an order, vendor or person">
+    <kbd aria-hidden="true">/</kbd>
+    <ul id="found" class="found" role="listbox" aria-label="Suggestions" hidden></ul>
+  </div>
+</div>
+
+<button class="log-toggle" id="logToggle" type="button" aria-expanded="false" aria-controls="drawer">MCP log</button>
+<aside class="drawer" id="drawer" aria-label="MCP messages">
+  <h2 class="drawer-title">MCP log</h2>
+  <p class="drawer-head">Every message between this page and the MCP server, newest first. Click one to see the JSON.</p>
+  <p class="drawer-stats" id="logStats"></p>
+  <ol class="log" id="log"></ol>
+</aside>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
