@@ -100,3 +100,50 @@ suggestion.
   the reason.
 - **Suggestion:** skip scenarios for capabilities the server didn't declare
   in `initialize`, or report them as "not applicable".
+
+## 2026-10-09 — No Alexa voice for a simulated client
+
+- **Task:** make the simulated Echo Show answer out loud in a voice that sounds
+  like an assistant, not a screen reader.
+- **Expected:** some way to use Alexa's voice, or a recommended text-to-speech
+  option, for the "simulated Alexa+ experience" the rules allow.
+- **Actual:** Alexa's voice exists only on devices. Amazon Polly needs an AWS
+  account, and the hackathon credits had run out. The browser's built-in
+  voices on Linux sound robotic. Open neural voices needed licence checks one
+  by one: the popular Piper "Lessac" voice is research-only, "HFC" is
+  non-commercial, and the `piper-tts` package itself is GPL-3.0.
+- **Severity:** medium (voice is most of what makes the demo feel like Alexa).
+- **Workaround:** a local Piper voice trained on LJSpeech (public domain),
+  served by the MCP server at `/speak` as an optional, separately installed
+  dependency; the browser voice is the fallback.
+- **Suggestion:** give entrants a free Polly allowance or a short list of
+  voices that are safe to use in a public repo.
+
+## 2026-10-09 — Tool descriptions can't be tested against Alexa+
+
+- **Task:** follow Amazon's tool-design guidance (one tool per intent,
+  synonyms in parameter descriptions, short spoken answers).
+- **Expected:** a way to check how Alexa+ picks a tool and fills its
+  arguments from what a user says.
+- **Actual:** without the gated tooling there is no way to run real
+  utterances through Alexa+'s planner, so the descriptions are written blind.
+- **Severity:** medium.
+- **Workaround:** keyword rules in the web client stand in for Alexa+'s
+  routing; descriptions still carry synonyms ("also called timeframe, date
+  range") for when a real assistant connects.
+- **Suggestion:** a public "utterance to tool call" test page, even rate
+  limited, would let entrants check their tool descriptions.
+
+## 2026-10-10 — A browser client's own timer makes the server look slow
+
+- **Task:** show each MCP round trip's time in the web client, to prove the
+  500 ms target.
+- **Expected:** timing `fetch` with `performance.now()` gives the round trip.
+- **Actual:** while the page renders 3D and plays audio, the timer also
+  counts time the page's main thread was busy: one call showed 3,423 ms that
+  took 17 ms on the wire.
+- **Severity:** low, but it would have put a wrong number in the demo video.
+- **Workaround:** read the request's network time from the browser's
+  Resource Timing API instead.
+- **Suggestion:** when the latency requirement is defined (see the 500 ms
+  entry above), say where it is measured.
